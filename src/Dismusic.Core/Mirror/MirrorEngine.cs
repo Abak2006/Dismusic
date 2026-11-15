@@ -14,7 +14,8 @@ public enum MirrorSourceKind
     AllExceptProcess,
 }
 
-public sealed record MirrorSource(MirrorSourceKind Kind, uint ProcessId = 0, string? DeviceId = null)
+/// <param name="InputGain">Applied to captured audio, e.g. to undo the attenuation of an enhanced app.</param>
+public sealed record MirrorSource(MirrorSourceKind Kind, uint ProcessId = 0, string? DeviceId = null, float InputGain = 1f)
 {
     public static MirrorSource FromDevice(string deviceId) => new(MirrorSourceKind.Device, DeviceId: deviceId);
     public static MirrorSource FromProcessTree(uint pid) => new(MirrorSourceKind.Process, pid);
@@ -41,6 +42,9 @@ public sealed class MirrorEngine : IDisposable
     private readonly object _gate = new();
     private ICaptureSource? _capture;
     private volatile OutputSink[] _sinks = [];
+    private float _sourceGain = 1f;
+    private float _ownSessionVolume = 1f;
+    private volatile float _inputGain = 1f;
 
     /// <summary>(deviceId, error or null when running). Raised from background threads.</summary>
     public event Action<string, string?>? TargetStatusChanged;
@@ -76,7 +80,7 @@ public sealed class MirrorEngine : IDisposable
                 }
                 try
                 {
-                    var sink = new OutputSink(enumerator.GetDevice(target.DeviceId), target, capture.SampleRate);
+                    var sink = new OutputSink(enumerator.GetDevice(target.DeviceId), capture.SampleRate, target.DelayMs, target.Volume);
                     sink.Failed += error => TargetStatusChanged?.Invoke(target.DeviceId, error);
                     sinks.Add(sink);
                     TargetStatusChanged?.Invoke(target.DeviceId, null);
@@ -94,6 +98,8 @@ public sealed class MirrorEngine : IDisposable
             }
 
             _sinks = sinks.ToArray();
+            _sourceGain = source.InputGain;
+            _inputGain = EffectiveGain();
             capture.DataAvailable += OnData;
             capture.Stopped += error =>
             {
@@ -115,6 +121,21 @@ public sealed class MirrorEngine : IDisposable
             Log.Info($"Mirror started: {source} → {_sinks.Length} device(s)");
         }
     }
+
+    /// <summary>
+    /// Dismusic's own Windows per-app volume. Windows also applies it to loopback capture (measured), so it is
+    /// divided back out here; the user's slider for Dismusic then affects the copies once, on output.
+    /// </summary>
+    public void SetOwnSessionVolume(float volume)
+    {
+        lock (_gate)
+        {
+            _ownSessionVolume = volume;
+            _inputGain = EffectiveGain();
+        }
+    }
+
+    private float EffectiveGain() => _ownSessionVolume < 0.01f ? 0f : _sourceGain / _ownSessionVolume;
 
     public void UpdateTarget(string deviceId, int delayMs, float volume)
     {
@@ -151,10 +172,13 @@ public sealed class MirrorEngine : IDisposable
     private void OnData(float[] buffer, int count)
     {
         var span = buffer.AsSpan(0, count);
+        float gain = _inputGain;
+        if (gain != 1f)
+            for (int i = 0; i < span.Length; i++) span[i] *= gain;
         foreach (var s in _sinks) s.Channel.Write(span);
     }
 
-    internal static string DescribeDeviceError(Exception ex) => ex switch
+    public static string DescribeDeviceError(Exception ex) => ex switch
     {
         COMException { HResult: unchecked((int)0x88890004) } => "Device was disconnected.",
         COMException { HResult: unchecked((int)0x8889000A) } => "Device is in use exclusively by another app.",
@@ -163,55 +187,4 @@ public sealed class MirrorEngine : IDisposable
     };
 
     public void Dispose() => Stop();
-
-    /// <summary>NAudio render stream feeding from a <see cref="MirrorChannel"/>.</summary>
-    private sealed class OutputSink : IWaveProvider, IDisposable
-    {
-        private readonly MMDevice _device;
-        private readonly WasapiOut _out;
-        private bool _disposed;
-
-        public OutputSink(MMDevice device, MirrorTarget target, int inputSampleRate)
-        {
-            _device = device;
-            DeviceId = device.ID;
-            var mix = device.AudioClient.MixFormat;
-            WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(mix.SampleRate, mix.Channels);
-            Channel = new MirrorChannel(inputSampleRate, 2,
-                mix.SampleRate, mix.Channels) { DelayMs = target.DelayMs, Volume = target.Volume };
-            _out = new WasapiOut(device, AudioClientShareMode.Shared, useEventSync: true, latency: 30);
-            _out.PlaybackStopped += (_, e) =>
-            {
-                if (!_disposed && e.Exception is not null)
-                {
-                    Log.Error($"Mirror output {DeviceId} stopped", e.Exception);
-                    Failed?.Invoke(DescribeDeviceError(e.Exception));
-                }
-            };
-            _out.Init(this);
-        }
-
-        public event Action<string>? Failed;
-        public string DeviceId { get; }
-        public MirrorChannel Channel { get; }
-        public WaveFormat WaveFormat { get; }
-
-        public void Play() => _out.Play();
-
-        public int Read(byte[] buffer, int offset, int count)
-        {
-            count -= count % WaveFormat.BlockAlign;
-            Channel.Render(MemoryMarshal.Cast<byte, float>(buffer.AsSpan(offset, count)));
-            return count;
-        }
-
-        public void Dispose()
-        {
-            if (_disposed) return;
-            _disposed = true;
-            try { _out.Stop(); } catch (COMException) { /* device already gone */ }
-            _out.Dispose();
-            _device.Dispose();
-        }
-    }
 }

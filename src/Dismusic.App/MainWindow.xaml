@@ -196,6 +196,122 @@
                 </Grid>
             </TabItem>
 
+            <!-- ================= Enhance ================= -->
+            <TabItem Header="Enhance">
+                <Grid Margin="4,12,4,0" DataContext="{Binding Enhance}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,12"
+                               Text="Boost an app beyond 100% and shape its sound with a 10-band equalizer. Pick a preset or make your own. A limiter stops boosted audio from clipping." />
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="280" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- App list -->
+                        <DockPanel Margin="0,0,16,0">
+                            <TextBlock DockPanel.Dock="Top" Text="Apps" Style="{StaticResource ColumnHeader}" Margin="4,0,0,6" />
+                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="4,8"
+                                       Visibility="{Binding HasApps, Converter={StaticResource BoolToCollapsed}}"
+                                       Text="No apps are playing audio right now. Start playback and the app shows up here." />
+                            <ListBox ItemsSource="{Binding Apps}" SelectedItem="{Binding Selected}"
+                                     AutomationProperties.Name="Apps to enhance">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:EnhanceAppViewModel}">
+                                        <DockPanel Margin="0,4">
+                                            <CheckBox DockPanel.Dock="Left" VerticalAlignment="Center" IsChecked="{Binding Enabled}"
+                                                      AutomationProperties.Name="{Binding EnableAutomationName}" Margin="0,0,8,0" />
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding StatusText}" Style="{StaticResource Hint}" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </DockPanel>
+
+                        <!-- Selected app -->
+                        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Focusable="False"
+                                      Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisible}}">
+                            <StackPanel Margin="0,0,8,0">
+                                <StackPanel DataContext="{Binding Selected}">
+                                    <TextBlock Text="{Binding DisplayName}" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                    <CheckBox Content="Enhance this app" IsChecked="{Binding Enabled}" Margin="0,0,0,16" />
+
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="90" />
+                                            <ColumnDefinition Width="*" MaxWidth="320" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="12" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <Label Content="_Preset" Target="{Binding ElementName=PresetBox}" VerticalAlignment="Center" />
+                                        <ComboBox x:Name="PresetBox" Grid.Column="1"
+                                                  ItemsSource="{Binding DataContext.Enhance.Presets, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                  SelectedValuePath="Key" DisplayMemberPath="Name" SelectedValue="{Binding PresetKey}" />
+                                        <Label Grid.Row="2" Content="_Volume" Target="{Binding ElementName=BoostSlider}" VerticalAlignment="Center" />
+                                        <Slider x:Name="BoostSlider" Grid.Row="2" Grid.Column="1" VerticalAlignment="Center"
+                                                Minimum="0" Maximum="400" SmallChange="5" LargeChange="25" TickFrequency="5" IsSnapToTickEnabled="True"
+                                                Value="{Binding VolumePercent}" AutomationProperties.Name="Volume percent"
+                                                AutomationProperties.HelpText="Above 100 boosts the app." />
+                                        <TextBlock Grid.Row="2" Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" MinWidth="48">
+                                            <Run Text="{Binding VolumePercent, Mode=OneWay}" /><Run Text="%" />
+                                        </TextBlock>
+                                    </Grid>
+
+                                    <TextBlock Text="Equalizer (dB)" Style="{StaticResource ColumnHeader}" Margin="0,0,0,8" />
+                                    <ItemsControl ItemsSource="{Binding Bands}" IsTabStop="False">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Rows="1" HorizontalAlignment="Left" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:BandViewModel}">
+                                                <StackPanel Width="48" HorizontalAlignment="Center">
+                                                    <TextBlock Text="{Binding GainText}" HorizontalAlignment="Center" FontSize="12" />
+                                                    <Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Margin="0,4"
+                                                            Minimum="-12" Maximum="12" SmallChange="0.5" LargeChange="3"
+                                                            TickFrequency="0.5" IsSnapToTickEnabled="True"
+                                                            Value="{Binding Gain}" AutomationProperties.Name="{Binding AutomationName}" />
+                                                    <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Style="{StaticResource Hint}" FontSize="12" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+
+                                <WrapPanel Margin="0,16,0,0">
+                                    <Button Content="Reset to flat" Command="{Binding ResetCommand}" Margin="0,0,12,8" />
+                                    <TextBox Width="180" Text="{Binding NewPresetName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8"
+                                             AutomationProperties.Name="New preset name" ToolTip="Name for a new preset" />
+                                    <Button Content="Save as preset" Command="{Binding SavePresetCommand}" Margin="0,0,12,8" />
+                                    <Button Content="Delete preset" Command="{Binding DeletePresetCommand}" Margin="0,0,0,8"
+                                            ToolTip="Delete the selected preset (only presets you made)" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <StackPanel Grid.Row="2" Margin="0,12,0,8">
+                        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,0,0,6"
+                                   Visibility="{Binding StatusText, Converter={StaticResource NullToCollapsed}}" AutomationProperties.LiveSetting="Polite" />
+                        <TextBlock Style="{StaticResource Hint}" FontSize="12"
+                                   Text="How it works without a driver: Dismusic turns the app down to 0% in Windows (-48 dB, inaudible), captures it, restores the exact original signal, applies your settings and plays it on the same device, about 50–60 ms later. App volumes are put back when you turn enhancement off or quit Dismusic." />
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
             <!-- ================= Screens ================= -->
             <TabItem Header="Screens">
                 <Grid Margin="4,12,4,0">

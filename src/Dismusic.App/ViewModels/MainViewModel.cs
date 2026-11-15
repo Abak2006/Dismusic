@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Threading;
 using Dismusic.Core;
+using Dismusic.Core.Enhance;
 using Dismusic.Core.Mirror;
 using Dismusic.Core.Routing;
 using Dismusic.Core.Screens;
@@ -44,6 +45,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RoutingWarning = string.Join(" ", new[] { _routing.RoutingUnavailableReason, loadWarning }.Where(s => s is not null));
         if (RoutingWarning.Length == 0) RoutingWarning = null;
         _mirrorSourceKey = settings.Mirror.Source;
+        Enhance = new EnhanceViewModel(_audio, settings, ScheduleSave, Save);
 
         ToggleMirrorCommand = new RelayCommand(() => _ = ToggleMirrorAsync(), () => !MirrorBusy);
         AutoDetectMonitorsCommand = new RelayCommand(AutoDetectMonitors);
@@ -80,6 +82,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     // ---------- Bindable state ----------
 
+    public EnhanceViewModel Enhance { get; }
     public ObservableCollection<Option> DeviceOptions { get; } = new();
     public ObservableCollection<Option> MonitorDeviceOptions { get; } = new();
     public ObservableCollection<Option> MirrorSources { get; } = new();
@@ -216,6 +219,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _suppress = false;
         }
         Raise(nameof(HasApps));
+        Enhance.OnSnapshot(snapshot);
     }
 
     private string DeviceName(string id, IReadOnlyList<AudioDevice> devices) =>
@@ -505,7 +509,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             problem = $"Start playing audio in {_settings.KnownAppNames.GetValueOrDefault(exe, exe)} first.";
             return null;
         }
-        return MirrorSource.FromProcessTree(snapshot.Processes.ResolveRootOfSameExe(app.SessionPids[0]));
+        // An enhanced app plays at 1/256 in Windows; undo that so the copy isn't near-silent.
+        return MirrorSource.FromProcessTree(snapshot.Processes.ResolveRootOfSameExe(app.SessionPids[0])) with
+        {
+            InputGain = Enhance.IsEnhancing(exe) ? EnhancerEngine.RecoveryGain : 1f,
+        };
     }
 
     private void OnMirrorTargetStatus(string deviceId, string? error)
@@ -519,6 +527,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private void UpdateMirrorStats()
     {
         if (!MirrorRunning) return;
+        try
+        {
+            _mirror.SetOwnSessionVolume(_audio.GetSessionVolume(new HashSet<uint> { (uint)Environment.ProcessId }) ?? 1f);
+        }
+        catch (COMException ex)
+        {
+            Log.Warn($"Reading own volume failed: 0x{ex.HResult:X8}");
+        }
         foreach (var s in _mirror.GetStats())
         {
             var row = MirrorTargets.FirstOrDefault(t => t.DeviceId == s.DeviceId);
@@ -587,6 +603,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _screenDebounce.Stop();
         _saveDebounce.Stop();
         _windowWatcher.Dispose();
+        Enhance.Dispose(); // restores apps' original volumes
         bool wasRunning = _settings.Mirror.Enabled;
         _mirror.Dispose();
         _settings.Mirror.Enabled = wasRunning; // resume next launch if it was on

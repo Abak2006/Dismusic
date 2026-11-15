@@ -26,11 +26,15 @@ public sealed class MirrorChannel
     private bool _havePair;
     private bool _priming = true;
     private double _smoothedFillFrames = -1;
+    private readonly int _baseLatencyMs;
     private volatile int _delayMs;
     private volatile float _volume = 1f;
 
-    public MirrorChannel(int inRate, int inChannels, int outRate, int outChannels, int maxDelayMs = 1000)
+    /// <param name="baseLatencyMs">Buffer target before user delay. Lower = less lag, more risk of dropouts.</param>
+    public MirrorChannel(int inRate, int inChannels, int outRate, int outChannels, int maxDelayMs = 1000, int baseLatencyMs = BaseLatencyMs)
     {
+        if (baseLatencyMs < 10) throw new ArgumentOutOfRangeException(nameof(baseLatencyMs));
+        _baseLatencyMs = baseLatencyMs;
         if (inRate <= 0 || outRate <= 0) throw new ArgumentOutOfRangeException(nameof(inRate));
         if (inChannels is < 1 or > 2) throw new ArgumentOutOfRangeException(nameof(inChannels));
         if (outChannels < 1) throw new ArgumentOutOfRangeException(nameof(outChannels));
@@ -38,7 +42,7 @@ public sealed class MirrorChannel
         _inChannels = inChannels;
         _outChannels = outChannels;
         _baseStep = (double)inRate / outRate;
-        _ring = new AudioRingBuffer(inChannels, inRate * (maxDelayMs + BaseLatencyMs + 1000) / 1000);
+        _ring = new AudioRingBuffer(inChannels, inRate * (maxDelayMs + baseLatencyMs + 1000) / 1000);
         _frameA = new float[inChannels];
         _frameB = new float[inChannels];
     }
@@ -58,7 +62,7 @@ public sealed class MirrorChannel
     public double Correction { get; private set; }
     public long Underruns { get; private set; }
     public double BufferedMs => _ring.CountFrames * 1000.0 / _inRate;
-    private int TargetFrames => (int)((long)(BaseLatencyMs + _delayMs) * _inRate / 1000);
+    private int TargetFrames => (int)((long)(_baseLatencyMs + _delayMs) * _inRate / 1000);
 
     /// <summary>Called from the capture thread.</summary>
     public void Write(ReadOnlySpan<float> interleaved) => _ring.Write(interleaved);

@@ -75,6 +75,20 @@ public sealed class ProcessTable
         return current.ProcessId;
     }
 
+    /// <summary><paramref name="root"/> and all its descendants (whatever their exe name).</summary>
+    public HashSet<uint> TreeOf(uint root)
+    {
+        var children = _byPid.Values.Where(e => e.ParentProcessId != e.ProcessId)
+            .ToLookup(e => e.ParentProcessId, e => e.ProcessId);
+        var result = new HashSet<uint> { root };
+        var queue = new Queue<uint>();
+        queue.Enqueue(root);
+        while (queue.Count > 0)
+            foreach (var child in children[queue.Dequeue()])
+                if (result.Add(child)) queue.Enqueue(child);
+        return result;
+    }
+
     public static string? TryGetImagePath(uint pid)
     {
         var handle = Win32.OpenProcess(Win32.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);

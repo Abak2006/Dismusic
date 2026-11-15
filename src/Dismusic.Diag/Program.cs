@@ -1,5 +1,7 @@
 ﻿using System.Diagnostics;
 using Dismusic.Core;
+using Dismusic.Core.Effects;
+using Dismusic.Core.Enhance;
 using Dismusic.Core.Mirror;
 using Dismusic.Core.Routing;
 using Dismusic.Core.Screens;
@@ -7,7 +9,7 @@ using Dismusic.Core.Sessions;
 
 // Command-line diagnostics for the Windows audio plumbing Dismusic relies on.
 // Usage: Dismusic.Diag [devices|sessions|monitors|policytest|capture [sec]|mirrortest [sec]|mirror <device-name-part> [sec]
-//                       |follow <exe>|tonewindow [sec]|all]
+//                       |follow <exe>|tonewindow [sec]|tone [sec]|enhancetest|mutetest|all]
 
 Log.FilePath = Path.Combine(Path.GetTempPath(), "dismusic-diag.log");
 var command = args.Length > 0 ? args[0].ToLowerInvariant() : "all";
@@ -28,13 +30,22 @@ try
             if (args.Length < 2) { Console.Error.WriteLine("follow needs an exe name, e.g. brave.exe"); return 2; }
             Follow(args[1].ToLowerInvariant()); break;
         case "tonewindow": ToneWindow(args.Length > 1 ? int.Parse(args[1]) : 30); break;
+        case "mutetest": MuteTest(); break;
+        case "tone": PlayTone(args.Length > 1 ? int.Parse(args[1]) : 10); break;
+        case "enhancetest": return EnhanceSelfTest();
+        case "taper": Taper(args.Skip(1).ToArray()); break;
+        case "resetownvolume": ResetOwnVolume(); break;
+        case "devloop": DeviceLoopbackOwnVolume(); break;
+        case "devstate": DeviceState(); break;
+        case "resetpowershellvolume": ResetPowerShellVolume(); break;
         case "mirrortest": return MirrorSelfTest(args.Length > 1 ? int.Parse(args[1]) : 6);
         case "all":
             Devices(); Sessions(); Monitors();
             int a = PolicyTest();
             int b = Capture(2);
             int c = MirrorSelfTest(6);
-            return a != 0 ? a : b != 0 ? b : c;
+            int d = EnhanceSelfTest();
+            return new[] { a, b, c, d }.FirstOrDefault(x => x != 0);
         default:
             Console.Error.WriteLine($"Unknown command '{command}'.");
             return 2;
@@ -73,7 +84,8 @@ static void Sessions()
             var id = policy.GetAppEndpoint(s.ProcessId);
             routed = id is null ? "Windows default" : devices.GetValueOrDefault(id, id);
         }
-        Console.WriteLine($"  pid {s.ProcessId,6} {s.ExeKey,-28} {(s.IsActive ? "playing" : "idle   ")} on {devices.GetValueOrDefault(s.DeviceId, s.DeviceId)} | pinned: {routed} | root pid {table.ResolveRootOfSameExe(s.ProcessId)}");
+        var volume = audio.GetSessionVolume(new HashSet<uint> { s.ProcessId });
+        Console.WriteLine($"  pid {s.ProcessId,6} {s.ExeKey,-28} {(s.IsActive ? "playing" : "idle   ")} vol {volume,7:F4} on {devices.GetValueOrDefault(s.DeviceId, s.DeviceId)} | pinned: {routed} | root pid {table.ResolveRootOfSameExe(s.ProcessId)}");
     }
     policy?.Dispose();
 }
@@ -233,4 +245,262 @@ static void ToneWindow(int seconds)
     thread.SetApartmentState(ApartmentState.STA);
     thread.Start();
     thread.Join();
+}
+
+// Does process-loopback capture still receive audio when the session is muted or turned down? Note: this measures
+// the diag process's own session, which shows gain = volume²; for other processes it is linear (see `taper`).
+static void MuteTest()
+{
+    Console.WriteLine("== Process loopback vs. session mute/volume ==");
+    using var tone = new NAudio.Wave.WasapiOut();
+    tone.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(new NAudio.Wave.SampleProviders.SignalGenerator(48000, 2)
+        { Frequency = 440, Gain = 0.001, Type = NAudio.Wave.SampleProviders.SignalGeneratorType.Sin }));
+    tone.Play();
+    Thread.Sleep(500);
+    using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+    using var device = enumerator.GetDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.Role.Multimedia);
+    var sessions = device.AudioSessionManager.Sessions;
+    NAudio.CoreAudioApi.AudioSessionControl? mine = null;
+    for (int i = 0; i < sessions.Count; i++) if (sessions[i].GetProcessID == (uint)Environment.ProcessId) mine = sessions[i];
+    if (mine is null) { Console.WriteLine("  own session not found"); return; }
+
+    float Peak()
+    {
+        float peak = 0;
+        using var cap = new ProcessLoopbackCapture((uint)Environment.ProcessId, includeProcessTree: true);
+        cap.DataAvailable += (b, n) => { for (int i = 0; i < n; i++) peak = Math.Max(peak, Math.Abs(b[i])); };
+        cap.Start(); Thread.Sleep(1200); cap.Stop();
+        return peak;
+    }
+    float reference = Peak();
+    Console.WriteLine($"  normal:        peak {reference:F5}");
+    foreach (var v in new[] { 0.5f, 0.25f, 0.1f, 0.05f, 0.02f })
+    {
+        mine.SimpleAudioVolume.Volume = v;
+        float p = Peak();
+        Console.WriteLine($"  session {v,4:P0}:  peak {p:F7}  gain {p / reference:F6}  (v^2 = {v * v:F6})");
+    }
+    mine.SimpleAudioVolume.Volume = 1f;
+    var endpoint = device.AudioEndpointVolume;
+    float master = endpoint.MasterVolumeLevelScalar;
+    try
+    {
+        endpoint.MasterVolumeLevelScalar = master * 0.5f;
+        Console.WriteLine($"  master x0.5:   peak {Peak():F5} (unchanged => capture is before master volume)");
+    }
+    finally
+    {
+        endpoint.MasterVolumeLevelScalar = master;
+    }
+    mine.SimpleAudioVolume.Mute = true;
+    Console.WriteLine($"  muted:         peak {Peak():F5}");
+    mine.SimpleAudioVolume.Mute = false;
+    tone.Stop();
+}
+
+static void PlayTone(int seconds)
+{
+    using var tone = new NAudio.Wave.WasapiOut();
+    tone.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(new NAudio.Wave.SampleProviders.SignalGenerator(48000, 2)
+        { Frequency = 440, Gain = 0.001, Type = NAudio.Wave.SampleProviders.SignalGeneratorType.Sin }));
+    tone.Play();
+    Thread.Sleep(seconds * 1000);
+}
+
+// End-to-end enhancer check, inaudible: a child process plays a -60 dB tone; it is attenuated to 1/256, captured,
+// recovered ×256 and re-rendered; then its volume is changed behind the engine's back and restored.
+static int EnhanceSelfTest()
+{
+    Console.WriteLine("== Enhancer self-test (inaudible) ==");
+    using (var en = new NAudio.CoreAudioApi.MMDeviceEnumerator())
+    using (var def = en.GetDefaultAudioEndpoint(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.Role.Multimedia))
+    {
+        if (def.AudioEndpointVolume.Mute)
+        {
+            Console.WriteLine("  SKIP: the default output device is muted (Windows then delivers silence to loopback capture).");
+            return 0;
+        }
+    }
+    // The tone must come from a different executable: Windows shares per-app volume between processes of the
+    // same exe, so a Dismusic.Diag child would also attenuate this process's own output and skew the result.
+    var wav = Path.Combine(Path.GetTempPath(), "dismusic-tone-60db.wav");
+    WriteToneWav(wav, amplitude: 0.001, seconds: 2);
+    using var child = Process.Start(new ProcessStartInfo("powershell.exe",
+        $"-NoProfile -Command \"$p = New-Object System.Media.SoundPlayer '{wav}'; $p.PlayLooping(); Start-Sleep 20\"")
+        { UseShellExecute = false, CreateNoWindow = true })!;
+    using var audio = new AudioSystem();
+    var tree = new HashSet<uint> { (uint)child.Id };
+    float? original = null;
+    for (int i = 0; i < 80 && original is null; i++) { Thread.Sleep(100); original = audio.GetSessionVolume(tree); }
+    if (original is null) { Console.WriteLine("  FAIL: child session never appeared"); child.Kill(); return 1; }
+    if (original < 0.02f) { Console.WriteLine($"  NOTE: powershell.exe volume was {original:F4} (left by an earlier run); restoring 100% afterwards"); original = 1f; }
+
+    var device = audio.GetRenderDevices().First(d => d.IsDefault);
+    using var engine = new EnhancerEngine();
+    try
+    {
+        audio.SetSessionVolume(tree, EnhancerEngine.AttenuatedSessionVolume);
+        engine.Start(new EnhanceTarget("tone", (uint)child.Id, device.Id, EffectSettings.Flat));
+        Thread.Sleep(300);
+        var self = new HashSet<uint> { (uint)Environment.ProcessId };
+        Console.WriteLine($"  this process's own app volume: {audio.GetSessionVolume(self):F4} (compensated)");
+        engine.SetOwnSessionVolume(audio.GetSessionVolume(self) ?? 1f);
+        Thread.Sleep(1700);
+        var s1 = engine.GetStats().Single();
+        bool recovered = Math.Abs(s1.InputPeak - 0.001f) < 0.0001f && s1.GuardTrips == 0;
+        Console.WriteLine($"  attenuated: recovered peak {s1.InputPeak:F6} (expect 0.001000), buffer {s1.BufferedMs:F0} ms, underruns {s1.Underruns}, guard trips {s1.GuardTrips}");
+
+        // The guard itself is unit-tested (AudioProcessorTests); a tone loud enough to trip it would be audible.
+        audio.SetSessionVolume(tree, 0.5f); // simulate the user moving the app's slider
+        Thread.Sleep(300);
+        audio.SetSessionVolume(tree, EnhancerEngine.AttenuatedSessionVolume); // what the app does every 250 ms
+        Thread.Sleep(1000);
+        var s2 = engine.GetStats().Single();
+        bool resumed = Math.Abs(s2.InputPeak - 0.001f) < 0.0001f;
+        Console.WriteLine($"  after re-attenuating: recovered peak {s2.InputPeak:F6}, underruns {s2.Underruns}");
+
+        audio.SetSessionVolume(self, 0.5f); // user turns Dismusic down in the mixer
+        engine.SetOwnSessionVolume(0.5f);
+        Thread.Sleep(1000);
+        var s3 = engine.GetStats().Single();
+        bool compensated = Math.Abs(s3.InputPeak - 0.001f) < 0.0001f;
+        Console.WriteLine($"  own volume 50%: recovered peak {s3.InputPeak:F6} (compensated, expect 0.001)");
+        audio.SetSessionVolume(self, 1f);
+
+        bool ok = recovered && resumed && compensated;
+        Console.WriteLine(ok ? "  PASS" : "  FAIL");
+        return ok ? 0 : 1;
+    }
+    finally
+    {
+        engine.StopAll();
+        audio.SetSessionVolume(tree, original.Value);
+        child.Kill();
+    }
+}
+
+// Measures capture gain vs. session volume for ANOTHER process (cross-process case).
+static void Taper(string[] options)
+{
+    NAudio.Wave.WasapiOut? parentOutput = null;
+    if (options.Contains("render"))
+    {
+        parentOutput = new NAudio.Wave.WasapiOut();
+        parentOutput.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(new NAudio.Wave.SampleProviders.SignalGenerator(48000, 2) { Gain = 0 }));
+        parentOutput.Play();
+        Console.WriteLine("  (this process is also rendering silence)");
+    }
+    string childArgs = options.Contains("ps") ? "" : "tone 20";
+    var wav = Path.Combine(Path.GetTempPath(), "dismusic-tone-60db.wav");
+    WriteToneWav(wav, 0.001, 2);
+    using var child = options.Contains("ps")
+        ? Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -Command \"$p = New-Object System.Media.SoundPlayer '{wav}'; $p.PlayLooping(); Start-Sleep 25\"") { UseShellExecute = false, CreateNoWindow = true })!
+        : Process.Start(new ProcessStartInfo(Environment.ProcessPath!, childArgs) { UseShellExecute = false, CreateNoWindow = true })!;
+    using var audio = new AudioSystem();
+    var tree = new HashSet<uint> { (uint)child.Id };
+    for (int i = 0; i < 80 && audio.GetSessionVolume(tree) is null; i++) Thread.Sleep(100);
+    Thread.Sleep(300);
+    float Peak()
+    {
+        float peak = 0;
+        using var cap = new ProcessLoopbackCapture((uint)child.Id, includeProcessTree: true);
+        cap.DataAvailable += (b, n) => { for (int i = 0; i < n; i++) peak = Math.Max(peak, Math.Abs(b[i])); };
+        cap.Start(); Thread.Sleep(1000); cap.Stop();
+        return peak;
+    }
+    try
+    {
+        foreach (var v in new[] { 1f, 1f / 16, 1f / 256, 1f, 1f / 256 })
+        {
+            var r = audio.SetSessionVolume(tree, v);
+            Thread.Sleep(300);
+            Console.WriteLine($"  set {v:F4} (sessions {r.Sessions}, readback {audio.GetSessionVolume(tree):F4}): gain {Peak() / 0.001f:F7} (x256 = {Peak() / 0.001f * 256:F5})");
+        }
+    }
+    finally { audio.SetSessionVolume(tree, 1f); child.Kill(); parentOutput?.Dispose(); }
+}
+
+static void WriteToneWav(string path, double amplitude, int seconds)
+{
+    const int rate = 48000;
+    int frames = rate * seconds;
+    using var w = new BinaryWriter(File.Create(path));
+    w.Write("RIFF"u8); w.Write(36 + frames * 4); w.Write("WAVE"u8);
+    w.Write("fmt "u8); w.Write(16); w.Write((short)1); w.Write((short)2); w.Write(rate); w.Write(rate * 4); w.Write((short)4); w.Write((short)16);
+    w.Write("data"u8); w.Write(frames * 4);
+    for (int i = 0; i < frames; i++)
+    {
+        short v = (short)Math.Round(Math.Sin(2 * Math.PI * 440 * i / rate) * amplitude * 32767);
+        w.Write(v); w.Write(v);
+    }
+}
+
+// Windows remembers per-app volume. If a test left this tool's own volume low, put it back to 100%.
+static void ResetOwnVolume()
+{
+    using var output = new NAudio.Wave.WasapiOut();
+    output.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(new NAudio.Wave.SampleProviders.SignalGenerator(48000, 2) { Gain = 0 }));
+    output.Play();
+    Thread.Sleep(300);
+    using var audio = new AudioSystem();
+    var self = new HashSet<uint> { (uint)Environment.ProcessId };
+    Console.WriteLine($"  own volume was {audio.GetSessionVolume(self):F4}");
+    audio.SetSessionVolume(self, 1f);
+    Console.WriteLine($"  own volume now {audio.GetSessionVolume(self):F4}");
+}
+
+// Is endpoint (device) loopback capture also scaled by the capturing process's own per-app volume?
+static void DeviceLoopbackOwnVolume()
+{
+    var wav = Path.Combine(Path.GetTempPath(), "dismusic-tone-60db.wav");
+    WriteToneWav(wav, 0.001, 2);
+    using var child = Process.Start(new ProcessStartInfo("powershell.exe",
+        $"-NoProfile -Command \"$p = New-Object System.Media.SoundPlayer '{wav}'; $p.PlayLooping(); Start-Sleep 12\"") { UseShellExecute = false, CreateNoWindow = true })!;
+    using var own = new NAudio.Wave.WasapiOut();
+    own.Init(new NAudio.Wave.SampleProviders.SampleToWaveProvider(new NAudio.Wave.SampleProviders.SignalGenerator(48000, 2) { Gain = 0 }));
+    own.Play();
+    using var audio = new AudioSystem();
+    var self = new HashSet<uint> { (uint)Environment.ProcessId };
+    Thread.Sleep(2500);
+    var device = audio.GetRenderDevices().First(d => d.IsDefault);
+    float Peak()
+    {
+        float peak = 0;
+        using var cap = new DeviceLoopbackCapture(audio.GetDevice(device.Id));
+        cap.DataAvailable += (b, n) => { for (int i = 0; i < n; i++) peak = Math.Max(peak, Math.Abs(b[i])); };
+        cap.Start(); Thread.Sleep(1000); cap.Stop();
+        return peak;
+    }
+    try
+    {
+        audio.SetSessionVolume(self, 1f);
+        Console.WriteLine($"  own volume 100%: device loopback peak {Peak():F6}");
+        audio.SetSessionVolume(self, 0.5f);
+        Console.WriteLine($"  own volume 50%:  device loopback peak {Peak():F6}");
+    }
+    finally { audio.SetSessionVolume(self, 1f); child.Kill(); }
+}
+
+// Earlier test runs could leave powershell.exe's remembered per-app volume low; put it back to 100%.
+static void ResetPowerShellVolume()
+{
+    var wav = Path.Combine(Path.GetTempPath(), "dismusic-silence.wav");
+    WriteToneWav(wav, 0, 1);
+    using var child = Process.Start(new ProcessStartInfo("powershell.exe",
+        $"-NoProfile -Command \"$p = New-Object System.Media.SoundPlayer '{wav}'; $p.PlayLooping(); Start-Sleep 10\"") { UseShellExecute = false, CreateNoWindow = true })!;
+    using var audio = new AudioSystem();
+    var tree = new HashSet<uint> { (uint)child.Id };
+    float? before = null;
+    for (int i = 0; i < 80 && before is null; i++) { Thread.Sleep(100); before = audio.GetSessionVolume(tree); }
+    audio.SetSessionVolume(tree, 1f);
+    Console.WriteLine($"  powershell.exe volume: {before:F4} -> {audio.GetSessionVolume(tree):F4}");
+    child.Kill();
+}
+
+static void DeviceState()
+{
+    using var e = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+    foreach (var d in e.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.DeviceState.Active))
+        using (d)
+            Console.WriteLine($"  {d.FriendlyName}: master {d.AudioEndpointVolume.MasterVolumeLevelScalar:F2} muted={d.AudioEndpointVolume.Mute} peak={d.AudioMeterInformation.MasterPeakValue:F4}");
 }

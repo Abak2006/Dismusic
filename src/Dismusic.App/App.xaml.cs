@@ -40,6 +40,8 @@ public partial class App : Application
         }
 
         DispatcherUnhandledException += OnUnhandledException;
+        // Sign-out/shutdown: stop processing and give enhanced apps their volume back before Windows ends us.
+        SessionEnding += (_, _) => ExitApp();
         AppDomain.CurrentDomain.UnhandledException += (_, args) => Log.Error("Unhandled exception", args.ExceptionObject as Exception);
 
         var store = new SettingsStore();

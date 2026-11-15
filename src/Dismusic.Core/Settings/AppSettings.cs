@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Dismusic.Core.Effects;
 
 namespace Dismusic.Core.Settings;
 
@@ -25,6 +26,17 @@ public sealed class AppSettings
     public MirrorSettings Mirror { get; set; } = new();
 
     public bool StartMinimized { get; set; }
+
+    /// <summary>Per-app effects (boost, EQ), keyed by lower-case exe name.</summary>
+    public Dictionary<string, AppEnhancementSettings> Enhance { get; set; } = new();
+
+    public List<PresetSettings> CustomPresets { get; set; } = new();
+
+    /// <summary>
+    /// Original Windows per-app volumes of apps Dismusic has turned down for enhancement. Written before the
+    /// volume is changed, so a crash can be undone on the next start.
+    /// </summary>
+    public Dictionary<string, float> SavedAppVolumes { get; set; } = new();
 
     public bool IsFollowing(string exeKey) => FollowScreenApps.Contains(exeKey, StringComparer.OrdinalIgnoreCase);
 
@@ -54,6 +66,18 @@ public sealed class AppSettings
             t.Volume = Math.Clamp(t.Volume, 0f, 1f);
         }
         Mirror.Targets.RemoveAll(t => string.IsNullOrWhiteSpace(t.DeviceId));
+        Enhance = (Enhance ?? new())
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Key) && kv.Value is not null)
+            .GroupBy(kv => kv.Key.ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.Last().Value.Normalized());
+        CustomPresets = (CustomPresets ?? new())
+            .Where(p => p is not null && !string.IsNullOrWhiteSpace(p.Name) && !BuiltInPresets.IsBuiltInName(p.Name))
+            .GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.Last().Normalized())
+            .ToList();
+        SavedAppVolumes = (SavedAppVolumes ?? new())
+            .Where(kv => !string.IsNullOrWhiteSpace(kv.Key) && float.IsFinite(kv.Value))
+            .ToDictionary(kv => kv.Key.ToLowerInvariant(), kv => Math.Clamp(kv.Value, 0f, 1f));
         if (string.IsNullOrWhiteSpace(Mirror.Source) ||
             !(Mirror.Source == MirrorSettings.AllAppsSource || Mirror.Source.StartsWith(MirrorSettings.DevicePrefix) ||
               Mirror.Source.StartsWith(MirrorSettings.AppPrefix)))
@@ -124,5 +148,53 @@ public sealed class SettingsStore(string? path = null)
         var temp = FilePath + ".tmp";
         File.WriteAllText(temp, JsonSerializer.Serialize(settings, JsonOptions));
         File.Move(temp, FilePath, overwrite: true);
+    }
+}
+
+public sealed class AppEnhancementSettings
+{
+    public bool Enabled { get; set; }
+
+    /// <summary>Name of the preset the values came from, or empty when edited by hand ("Custom").</summary>
+    public string Preset { get; set; } = "Flat";
+
+    public int VolumePercent { get; set; } = 100;
+    public double[] BandsDb { get; set; } = new double[EqBands.Count];
+
+    public EffectSettings ToEffects() => new EffectSettings(VolumePercent, BandsDb).Sanitized();
+
+    public void Apply(EffectSettings effects, string preset)
+    {
+        var s = effects.Sanitized();
+        VolumePercent = s.VolumePercent;
+        BandsDb = s.BandsDb.ToArray();
+        Preset = preset;
+    }
+
+    internal AppEnhancementSettings Normalized()
+    {
+        var e = ToEffects();
+        VolumePercent = e.VolumePercent;
+        BandsDb = e.BandsDb.ToArray();
+        Preset ??= "";
+        return this;
+    }
+}
+
+public sealed class PresetSettings
+{
+    public string Name { get; set; } = "";
+    public int VolumePercent { get; set; } = 100;
+    public double[] BandsDb { get; set; } = new double[EqBands.Count];
+
+    public EffectPreset ToPreset() => new(Name, VolumePercent, BandsDb, IsBuiltIn: false);
+
+    internal PresetSettings Normalized()
+    {
+        var e = new EffectSettings(VolumePercent, BandsDb ?? []).Sanitized();
+        Name = Name.Trim();
+        VolumePercent = e.VolumePercent;
+        BandsDb = e.BandsDb.ToArray();
+        return this;
     }
 }
