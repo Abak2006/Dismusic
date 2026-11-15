@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Dismusic.App/Dismusic.App.csproj" />
+    <Project Path="src/Dismusic.Core/Dismusic.Core.csproj" />
+    <Project Path="src/Dismusic.Diag/Dismusic.Diag.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Dismusic.Tests/Dismusic.Tests.csproj" />
+  </Folder>
+</Solution>

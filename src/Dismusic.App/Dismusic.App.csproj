@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>Dismusic</AssemblyName>
+    <RootNamespace>Dismusic.App</RootNamespace>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- WPF's Fluent ThemeMode is still flagged experimental. -->
+    <NoWarn>$(NoWarn);WPF0001</NoWarn>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Avoid WinForms/WPF type-name clashes (Application, MessageBox, Color...). WinForms is only used for the tray icon. -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Dismusic.Core\Dismusic.Core.csproj" />
+  </ItemGroup>
+
+</Project>
