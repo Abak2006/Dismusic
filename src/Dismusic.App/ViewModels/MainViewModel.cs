@@ -35,6 +35,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private bool _mirrorBusy;
     private string _mirrorStatus = "Off";
     private string? _mirrorSourceKey;
+    private HashSet<string> _activeMirrorTargets = new(StringComparer.OrdinalIgnoreCase);
+    private const string OriginalHereNote = "Skipped: the original already plays here";
 
     public MainViewModel(SettingsStore store, AppSettings settings, string? loadWarning)
     {
@@ -167,6 +169,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             if (!Set(ref _mirrorSourceKey, value) || _suppress || value is null) return;
             _settings.Mirror.Source = value;
             ScheduleSave();
+            if (_routing.Last is { } snapshot) UpdateOriginalDevices(snapshot);
         }
     }
 
@@ -323,7 +326,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return row;
         }).ToList();
         CollectionSync.Sync(MirrorTargets, targets, t => t.DeviceId);
+        UpdateOriginalDevices(snapshot);
     }
+
+    /// <summary>
+    /// Marks targets where the source already plays, and while running restarts the copy if that changed
+    /// (e.g. the app was moved to another device), so a device never gets the original plus a late copy.
+    /// </summary>
+    private void UpdateOriginalDevices(RoutingSnapshot snapshot)
+    {
+        var originals = MirrorPlanner.OriginalDevices(_settings.Mirror.Source, snapshot);
+        foreach (var row in MirrorTargets)
+        {
+            row.IsOriginal = originals.Contains(row.DeviceId);
+            if (row.IsOriginal && row.Enabled && !row.HasError) row.Status = OriginalHereNote;
+            else if (row.Status == OriginalHereNote) row.Status = "";
+        }
+        if (MirrorRunning && !MirrorBusy && !EffectiveMirrorTargets().SetEquals(_activeMirrorTargets))
+        {
+            Log.Info("Mirror targets changed (source moved device); restarting");
+            _ = RestartMirrorAsync();
+        }
+    }
+
+    private HashSet<string> EffectiveMirrorTargets() =>
+        MirrorTargets.Where(t => t.Enabled && !t.IsOriginal).Select(t => t.DeviceId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     // ---------- User actions: apps ----------
 
@@ -424,20 +451,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 MirrorStatus = problem!;
                 return;
             }
-            var targets = MirrorTargets.Where(t => t.Enabled)
+            if (_routing.Last is { } snapshot) UpdateOriginalDevices(snapshot);
+            var targets = MirrorTargets.Where(t => t.Enabled && !t.IsOriginal)
                 .Select(t => new MirrorTarget(t.DeviceId, t.DelayMs, t.Volume / 100f)).ToList();
             if (targets.Count == 0)
             {
-                MirrorStatus = "Turn on at least one device below, then press Start.";
+                MirrorStatus = MirrorTargets.Any(t => t.Enabled)
+                    ? "The source already plays on every device you turned on. Turn on a different device."
+                    : "Turn on at least one device below, then press Start.";
                 return;
             }
             MirrorStatus = "Starting…";
             foreach (var t in MirrorTargets)
             {
                 t.HasError = false;
-                t.Status = t.Enabled ? "Starting…" : "";
+                t.Status = !t.Enabled ? "" : t.IsOriginal ? OriginalHereNote : "Starting…";
             }
             await Task.Run(() => _mirror.Start(source, targets));
+            _activeMirrorTargets = targets.Select(t => t.DeviceId).ToHashSet(StringComparer.OrdinalIgnoreCase);
             MirrorRunning = true;
             _settings.Mirror.Enabled = true;
             ScheduleSave();
@@ -472,8 +503,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             MirrorBusy = false;
         }
         MirrorRunning = false;
+        _activeMirrorTargets.Clear();
         MirrorStatus = "Off";
-        foreach (var t in MirrorTargets) { t.Status = ""; t.HasError = false; }
+        foreach (var t in MirrorTargets) { t.Status = t.IsOriginal && t.Enabled ? OriginalHereNote : ""; t.HasError = false; }
         if (rememberOff)
         {
             _settings.Mirror.Enabled = false;
@@ -538,7 +570,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         foreach (var s in _mirror.GetStats())
         {
             var row = MirrorTargets.FirstOrDefault(t => t.DeviceId == s.DeviceId);
-            if (row is null || row.HasError) continue;
+            if (row is null || row.HasError || row.IsOriginal) continue;
             row.Status = s.Underruns > 0 ? $"Playing · {s.BufferedMs:F0} ms buffer · {s.Underruns} dropouts" : $"Playing · {s.BufferedMs:F0} ms buffer";
         }
     }

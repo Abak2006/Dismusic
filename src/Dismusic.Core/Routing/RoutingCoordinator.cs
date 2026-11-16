@@ -16,7 +16,8 @@ public sealed record AppState(
     RouteReason ActiveReason,
     string? MonitorName,
     string? Error,
-    string? SessionDeviceId);
+    string? SessionDeviceId,
+    IReadOnlyList<string> PlayingDeviceIds);
 
 public sealed record RoutingSnapshot(
     IReadOnlyList<AudioDevice> Devices,
@@ -166,7 +167,8 @@ public sealed class RoutingCoordinator : IDisposable
 
             var sessionDevice = (sessions.FirstOrDefault(s => s.IsActive) ?? sessions.FirstOrDefault())?.DeviceId;
             apps.Add(new AppState(exe, name, running, pids.Count > 0, sessions.Any(s => s.IsActive), pids,
-                current, reason, monitorName, error, sessionDevice));
+                current, reason, monitorName, error, sessionDevice,
+                sessions.Where(s => s.IsActive).Select(s => s.DeviceId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()));
         }
 
         apps.Sort((a, b) =>

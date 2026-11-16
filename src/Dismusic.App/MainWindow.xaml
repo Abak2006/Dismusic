@@ -190,7 +190,7 @@
                             <TextBlock Style="{StaticResource Hint}" Margin="12,16,12,4" FontSize="12"
                                        Text="Copies run about 60–80 ms behind the original. If the original plays on Bluetooth (which is slower), that gap may already cancel out; otherwise add delay to whichever device sounds early until they line up." />
                             <TextBlock Style="{StaticResource Hint}" Margin="12,4,12,8" FontSize="12"
-                                       Text="Don't turn on the device the source already plays on, or you'll hear it twice. If you use an audio enhancer (e.g. FxSound), pick 'Everything on' its device as the source rather than 'All apps', which would capture the enhancer's output too." />
+                                       Text="Devices where the source already plays are skipped automatically, so you don't hear it twice. Two cases Dismusic can't see: with 'All apps' it can't tell which app plays where, and an audio enhancer (e.g. FxSound) re-plays its audio on another device. Don't add a device those already play on." />
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

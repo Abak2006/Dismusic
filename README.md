@@ -46,6 +46,8 @@ Multi-output sources:
 - **All apps except Dismusic**: process loopback in exclude mode. Avoid it with audio enhancers such as FxSound, because it also captures the enhancer's re-rendered output, so you'd hear everything twice.
 - **Only \<app\>**: process loopback of that app's process tree (browsers included, since their audio runs in a child process).
 
+Devices where the source's original already plays are skipped, because a copy there would be heard twice about 60 ms apart (an echo). That means the source device itself, or the devices the app is playing on (its pinned or default device while paused). This is re-checked every 2 s while running, and the copy restarts on the right devices if the app moves. Two cases can't be detected: with "All apps" Dismusic can't tell which app plays where, and an enhancer such as FxSound re-plays its input on another device.
+
 ## How it works
 
 ```
