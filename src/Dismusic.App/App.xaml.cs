@@ -48,6 +48,15 @@ public partial class App : Application
         try
         {
             var settings = store.Load(out var warning);
+            try
+            {
+                StartupRegistration.Ensure(settings);
+                store.Save(settings);
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+            {
+                Log.Error("Could not register start with Windows", ex);
+            }
             _viewModel = new MainViewModel(store, settings, warning);
         }
         catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException)
@@ -66,7 +75,7 @@ public partial class App : Application
             args.Cancel = true; // keep running in the tray
             _window.Hide();
         };
-        _tray = new TrayIcon(_viewModel, ShowWindow, ExitApp);
+        _tray = new TrayIcon(_viewModel, ShowWindow, ToggleFlyout, ExitApp);
         _window.Icon = Imaging.CreateBitmapSourceFromHIcon(_tray.Image.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
 
         _activateWait = ThreadPool.RegisterWaitForSingleObject(_activateEvent,
@@ -75,6 +84,15 @@ public partial class App : Application
         bool startHidden = e.Args.Contains("--tray", StringComparer.OrdinalIgnoreCase) || _viewModel.StartMinimized;
         if (!startHidden) ShowWindow();
         Log.Info("Dismusic started");
+    }
+
+    private TrayFlyout? _flyout;
+
+    private void ToggleFlyout()
+    {
+        if (_viewModel is null || _exiting) return;
+        _flyout ??= new TrayFlyout(_viewModel, ShowWindow);
+        _flyout.Toggle();
     }
 
     private void ShowWindow()
@@ -90,6 +108,7 @@ public partial class App : Application
         if (_exiting) return;
         _exiting = true;
         _activateWait?.Unregister(null);
+        _flyout?.Close();
         _viewModel?.Dispose();
         _tray?.Dispose();
         _window?.Close();

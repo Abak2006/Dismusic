@@ -132,9 +132,10 @@
                             <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="220" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="Play a copy on" Style="{StaticResource ColumnHeader}" />
+                        <TextBlock Text="Play a copy on · device volume" Style="{StaticResource ColumnHeader}" />
                         <TextBlock Grid.Column="1" Text="Delay" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="2" Text="Volume" Style="{StaticResource ColumnHeader}" />
+                        <TextBlock Grid.Column="2" Text="Copy volume" Style="{StaticResource ColumnHeader}"
+                                   ToolTip="Level of the copy only. The device volume under each name is the device's own Windows volume." />
                         <TextBlock Grid.Column="3" Text="Status" Style="{StaticResource ColumnHeader}" />
                     </Grid>
 
@@ -151,10 +152,24 @@
                                                     <ColumnDefinition Width="180" />
                                                     <ColumnDefinition Width="220" />
                                                 </Grid.ColumnDefinitions>
-                                                <CheckBox IsChecked="{Binding Enabled}" VerticalAlignment="Center" Margin="0,0,12,0"
-                                                          AutomationProperties.Name="{Binding Name}">
-                                                    <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
-                                                </CheckBox>
+                                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                                    <CheckBox IsChecked="{Binding Enabled}" AutomationProperties.Name="{Binding Name}">
+                                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
+                                                    </CheckBox>
+                                                    <DockPanel DataContext="{Binding Device}" Margin="28,4,0,0" LastChildFill="True">
+                                                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource IconToggle}"
+                                                                      IsChecked="{Binding IsMuted}" Content="{Binding Glyph}"
+                                                                      AutomationProperties.Name="{Binding MuteAutomationName}"
+                                                                      ToolTip="Mute or unmute this device in Windows" />
+                                                        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" MinWidth="40" Margin="8,0,0,0">
+                                                            <Run Text="{Binding Volume, Mode=OneWay}" /><Run Text="%" />
+                                                        </TextBlock>
+                                                        <Slider VerticalAlignment="Center" MaxWidth="160" Minimum="0" Maximum="100"
+                                                                SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                                Value="{Binding Volume}" AutomationProperties.Name="{Binding VolumeAutomationName}"
+                                                                ToolTip="This device's Windows volume (affects everything playing on it)" />
+                                                    </DockPanel>
+                                                </StackPanel>
                                                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                                                     <Slider Width="150" Minimum="0" Maximum="1000" SmallChange="10" LargeChange="50"
                                                             TickFrequency="10" IsSnapToTickEnabled="True"
@@ -365,7 +380,9 @@
             <TabItem Header="Settings">
                 <StackPanel Margin="4,16,4,0" MaxWidth="640" HorizontalAlignment="Left">
                     <CheckBox Content="Start Dismusic when I sign in to Windows" IsChecked="{Binding StartWithWindows}" Margin="0,0,0,8" />
-                    <CheckBox Content="Start minimized to the notification area" IsChecked="{Binding StartMinimized}" Margin="0,0,0,20" />
+                    <CheckBox Content="Start minimized to the notification area" IsChecked="{Binding StartMinimized}" Margin="0,0,0,8" />
+                    <TextBlock Style="{StaticResource Hint}" FontSize="12" Margin="0,0,0,20"
+                               Text="When Dismusic starts with Windows it opens in the notification area, and apps you enhanced are enhanced again with the settings you last chose as soon as they play." />
 
                     <TextBlock Text="Closing this window keeps Dismusic running in the notification area so your routing keeps working. Use Exit from its icon menu to quit."
                                Style="{StaticResource Hint}" Margin="0,0,0,20" />

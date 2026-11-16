@@ -27,6 +27,18 @@ public sealed class AppSettings
 
     public bool StartMinimized { get; set; }
 
+    /// <summary>
+    /// Set once Dismusic has turned "start with Windows" on for the first time, so a user who later turns it off
+    /// isn't overridden.
+    /// </summary>
+    public bool AutostartConfigured { get; set; }
+
+    /// <summary>The enhancement (preset, volume, EQ) last chosen for any app; new apps start from it.</summary>
+    public PresetSettings? LastEnhancement { get; set; }
+
+    /// <summary>The app last selected in the Enhance tab.</summary>
+    public string? LastEnhanceApp { get; set; }
+
     /// <summary>Per-app effects (boost, EQ), keyed by lower-case exe name.</summary>
     public Dictionary<string, AppEnhancementSettings> Enhance { get; set; } = new();
 
@@ -75,6 +87,7 @@ public sealed class AppSettings
             .GroupBy(p => p.Name.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(g => g.Last().Normalized())
             .ToList();
+        LastEnhancement = LastEnhancement?.Normalized();
         SavedAppVolumes = (SavedAppVolumes ?? new())
             .Where(kv => !string.IsNullOrWhiteSpace(kv.Key) && float.IsFinite(kv.Value))
             .ToDictionary(kv => kv.Key.ToLowerInvariant(), kv => Math.Clamp(kv.Value, 0f, 1f));
@@ -192,7 +205,7 @@ public sealed class PresetSettings
     internal PresetSettings Normalized()
     {
         var e = new EffectSettings(VolumePercent, BandsDb ?? []).Sanitized();
-        Name = Name.Trim();
+        Name = (Name ?? "").Trim();
         VolumePercent = e.VolumePercent;
         BandsDb = e.BandsDb.ToArray();
         return this;

@@ -20,6 +20,24 @@ internal static class StartupRegistration
         return key?.GetValue(ValueName) is string;
     }
 
+    /// <summary>
+    /// Turns autostart on the first time Dismusic runs (it's needed for enhancements and routing to apply after
+    /// Windows starts), and keeps an existing entry pointing at the current exe if Dismusic was moved/updated.
+    /// </summary>
+    public static void Ensure(Dismusic.Core.Settings.AppSettings settings)
+    {
+        if (!settings.AutostartConfigured)
+        {
+            SetEnabled(true);
+            settings.AutostartConfigured = true;
+            Dismusic.Core.Log.Info("Start with Windows turned on (first run)");
+            return;
+        }
+        using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+        if (key?.GetValue(ValueName) is string current && !string.Equals(current, Command, StringComparison.OrdinalIgnoreCase))
+            SetEnabled(true);
+    }
+
     public static void SetEnabled(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);
@@ -81,7 +99,7 @@ internal sealed class TrayIcon : IDisposable
     private readonly WinForms.NotifyIcon _icon;
     private readonly Icon _image;
 
-    public TrayIcon(ViewModels.MainViewModel vm, Action open, Action exit)
+    public TrayIcon(ViewModels.MainViewModel vm, Action open, Action toggleFlyout, Action exit)
     {
         _image = AppIcon.Create();
         var menu = new WinForms.ContextMenuStrip();
@@ -89,19 +107,34 @@ internal sealed class TrayIcon : IDisposable
         openItem.Font = new Font(openItem.Font, System.Drawing.FontStyle.Bold);
         var follow = new WinForms.ToolStripMenuItem("Screen follow", null, (_, _) => vm.ScreenFollowEnabled = !vm.ScreenFollowEnabled);
         var mirror = new WinForms.ToolStripMenuItem("Multi-output", null, (_, _) => vm.ToggleMirrorCommand.Execute(null));
-        menu.Items.AddRange([openItem, new WinForms.ToolStripSeparator(), follow, mirror, new WinForms.ToolStripSeparator(),
+        var outputs = new WinForms.ToolStripMenuItem("Output device");
+        menu.Items.AddRange([openItem, new WinForms.ToolStripSeparator(), outputs, follow, mirror, new WinForms.ToolStripSeparator(),
             new WinForms.ToolStripMenuItem("Exit", null, (_, _) => exit())]);
         menu.Opening += (_, _) =>
         {
+            vm.RefreshNow();
+            outputs.DropDownItems.Clear();
+            foreach (var device in vm.OutputDevices)
+            {
+                var d = device;
+                outputs.DropDownItems.Add(new WinForms.ToolStripMenuItem(d.Name, null, (_, _) => vm.MakeDefaultOutput(d)) { Checked = d.IsDefault });
+            }
+            outputs.Enabled = outputs.DropDownItems.Count > 0;
             follow.Checked = vm.ScreenFollowEnabled;
             mirror.Checked = vm.MirrorRunning;
             mirror.Enabled = !vm.MirrorBusy;
         };
 
-        _icon = new WinForms.NotifyIcon { Icon = _image, Text = "Dismusic", ContextMenuStrip = menu, Visible = true };
+        _icon = new WinForms.NotifyIcon
+        {
+            Icon = _image,
+            Text = "Dismusic: click for volume and output, right-click for more",
+            ContextMenuStrip = menu,
+            Visible = true,
+        };
         _icon.MouseClick += (_, e) =>
         {
-            if (e.Button == WinForms.MouseButtons.Left) open();
+            if (e.Button == WinForms.MouseButtons.Left) toggleFlyout();
         };
     }
 

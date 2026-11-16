@@ -3,7 +3,8 @@ using NAudio.CoreAudioApi.Interfaces;
 
 namespace Dismusic.Core.Sessions;
 
-public sealed record AudioDevice(string Id, string Name, bool IsDefault);
+/// <param name="Volume">Windows master volume of the device, 0-1.</param>
+public sealed record AudioDevice(string Id, string Name, bool IsDefault, float Volume = 1f, bool IsMuted = false);
 
 public sealed record AudioSessionInfo(uint ProcessId, string ExeKey, string DeviceId, bool IsActive);
 
@@ -25,7 +26,21 @@ public sealed class AudioSystem : IDisposable
         foreach (var device in _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
         {
             using (device)
-                result.Add(new AudioDevice(device.ID, device.FriendlyName, device.ID == defaultId));
+            {
+                float volume = 1f;
+                bool muted = false;
+                try
+                {
+                    var endpoint = device.AudioEndpointVolume;
+                    volume = endpoint.MasterVolumeLevelScalar;
+                    muted = endpoint.Mute;
+                }
+                catch (System.Runtime.InteropServices.COMException ex)
+                {
+                    Log.Warn($"Could not read volume of '{device.FriendlyName}': 0x{ex.HResult:X8}");
+                }
+                result.Add(new AudioDevice(device.ID, device.FriendlyName, device.ID == defaultId, volume, muted));
+            }
         }
         return result;
     }
@@ -65,6 +80,19 @@ public sealed class AudioSystem : IDisposable
     }
 
     public MMDevice GetDevice(string id) => _enumerator.GetDevice(id);
+
+    /// <summary>Sets a device's Windows master volume (0-1), the same as its slider in Windows.</summary>
+    public void SetDeviceVolume(string deviceId, float volume)
+    {
+        using var device = _enumerator.GetDevice(deviceId);
+        device.AudioEndpointVolume.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f);
+    }
+
+    public void SetDeviceMute(string deviceId, bool muted)
+    {
+        using var device = _enumerator.GetDevice(deviceId);
+        device.AudioEndpointVolume.Mute = muted;
+    }
 
     /// <summary>
     /// Sets the Windows per-app volume of every session owned by <paramref name="processIds"/>, on every

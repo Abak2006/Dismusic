@@ -92,6 +92,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public ObservableCollection<MonitorRowViewModel> Monitors { get; } = new();
     public ObservableCollection<MirrorTargetViewModel> MirrorTargets { get; } = new();
 
+    /// <summary>Output devices with their Windows volume, mute and default state.</summary>
+    public ObservableCollection<DeviceViewModel> OutputDevices { get; } = new();
+    public DeviceViewModel? DefaultOutput => OutputDevices.FirstOrDefault(d => d.IsDefault);
+
     public RelayCommand ToggleMirrorCommand { get; }
     public RelayCommand AutoDetectMonitorsCommand { get; }
     public RelayCommand ResetAllRoutesCommand { get; }
@@ -213,6 +217,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         try
         {
             SyncDeviceOptions(snapshot.Devices);
+            SyncOutputDevices(snapshot.Devices);
             SyncApps(snapshot);
             SyncMonitors(snapshot.Monitors);
             SyncMirror(snapshot);
@@ -228,6 +233,63 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private string DeviceName(string id, IReadOnlyList<AudioDevice> devices) =>
         devices.FirstOrDefault(d => d.Id == id)?.Name
         ?? (_settings.KnownDeviceNames.TryGetValue(id, out var n) ? $"{n} (disconnected)" : "Unknown device (disconnected)");
+
+    private void SyncOutputDevices(IReadOnlyList<AudioDevice> devices)
+    {
+        var desired = devices.Select(d => OutputDevices.FirstOrDefault(x => x.Id == d.Id)
+            ?? new DeviceViewModel(d.Id, OnDeviceVolumeChanged, OnDeviceMuteChanged)).ToList();
+        CollectionSync.Sync(OutputDevices, desired, d => d.Id);
+        foreach (var (vm, d) in desired.Zip(devices)) vm.Load(d.Name, d.IsDefault, d.Volume, d.IsMuted);
+        Raise(nameof(DefaultOutput));
+    }
+
+    /// <summary>Re-reads devices now (e.g. when the tray flyout opens) instead of waiting for the 2 s poll.</summary>
+    public void RefreshNow() => Refresh();
+
+    private void OnDeviceVolumeChanged(DeviceViewModel device)
+    {
+        if (_suppress) return;
+        try
+        {
+            _audio.SetDeviceVolume(device.Id, device.Volume / 100f);
+        }
+        catch (COMException ex)
+        {
+            Log.Error($"Setting volume of {device.Name} failed", ex);
+            StatusText = $"Couldn't change the volume of {device.Name}. It may have been disconnected.";
+        }
+    }
+
+    private void OnDeviceMuteChanged(DeviceViewModel device)
+    {
+        if (_suppress) return;
+        try
+        {
+            _audio.SetDeviceMute(device.Id, device.IsMuted);
+        }
+        catch (COMException ex)
+        {
+            Log.Error($"Muting {device.Name} failed", ex);
+            StatusText = $"Couldn't mute or unmute {device.Name}. It may have been disconnected.";
+        }
+    }
+
+    /// <summary>Makes the device the Windows default output (all roles). Apps that follow the default move to it.</summary>
+    public void MakeDefaultOutput(DeviceViewModel device)
+    {
+        if (device.IsDefault) return;
+        try
+        {
+            DefaultDevice.Set(device.Id);
+            Log.Info($"Default output set to {device.Name}");
+        }
+        catch (Exception ex) when (ex is COMException or InvalidCastException)
+        {
+            Log.Error($"Setting default output to {device.Name} failed", ex);
+            StatusText = $"Windows didn't switch the default output to {device.Name}.";
+        }
+        Refresh();
+    }
 
     private void SyncDeviceOptions(IReadOnlyList<AudioDevice> devices)
     {
@@ -323,6 +385,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 if (cfg is not null) row.Load(cfg.Enabled, cfg.DelayMs, (int)Math.Round(cfg.Volume * 100));
             }
             row.Name = d.Name;
+            row.Device = OutputDevices.FirstOrDefault(x => x.Id == d.Id);
             return row;
         }).ToList();
         CollectionSync.Sync(MirrorTargets, targets, t => t.DeviceId);

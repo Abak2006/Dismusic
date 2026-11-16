@@ -88,6 +88,11 @@ public sealed class EnhanceViewModel : ObservableObject, IDisposable
         {
             if (!Set(ref _selected, value)) return;
             Raise(nameof(HasSelection));
+            if (!_suppress && value is not null)
+            {
+                _settings.LastEnhanceApp = value.ExeKey;
+                _scheduleSave();
+            }
             SavePresetCommand.RaiseCanExecuteChanged();
             DeletePresetCommand.RaiseCanExecuteChanged();
             ResetCommand.RaiseCanExecuteChanged();
@@ -130,9 +135,11 @@ public sealed class EnhanceViewModel : ObservableObject, IDisposable
             {
                 row.DisplayName = NameOf(row.ExeKey);
                 var cfg = _settings.Enhance.GetValueOrDefault(row.ExeKey);
-                row.Load(cfg?.Enabled ?? false, PresetKeyFor(cfg), cfg?.ToEffects() ?? EffectSettings.Flat);
+                row.Load(cfg?.Enabled ?? false, PresetKeyFor(cfg), cfg?.ToEffects() ?? LastEffects);
             }
-            if (Selected is null || !Apps.Contains(Selected)) Selected = Apps.FirstOrDefault();
+            if (Selected is null || !Apps.Contains(Selected))
+                Selected = Apps.FirstOrDefault(r => string.Equals(r.ExeKey, _settings.LastEnhanceApp, StringComparison.OrdinalIgnoreCase))
+                           ?? Apps.FirstOrDefault();
         }
         finally
         {
@@ -332,6 +339,7 @@ public sealed class EnhanceViewModel : ObservableObject, IDisposable
         try { row.Load(cfg.Enabled, preset.Name, cfg.ToEffects()); }
         finally { _suppress = false; }
         _engine.Update(row.ExeKey, cfg.ToEffects());
+        RememberLast(cfg);
         _scheduleSave();
         UpdateRowStatuses();
         DeletePresetCommand.RaiseCanExecuteChanged();
@@ -348,6 +356,7 @@ public sealed class EnhanceViewModel : ObservableObject, IDisposable
         try { row.PresetKey = cfg.Preset; }
         finally { _suppress = false; }
         _engine.Update(row.ExeKey, effects);
+        RememberLast(cfg);
         _scheduleSave();
         UpdateRowStatuses();
         DeletePresetCommand.RaiseCanExecuteChanged();
@@ -356,9 +365,22 @@ public sealed class EnhanceViewModel : ObservableObject, IDisposable
     private AppEnhancementSettings ConfigFor(string exe)
     {
         if (!_settings.Enhance.TryGetValue(exe, out var cfg))
+        {
+            // A newly enhanced app starts from the last enhancement you chose, not from Flat.
             _settings.Enhance[exe] = cfg = new AppEnhancementSettings();
+            cfg.Apply(LastEffects, LastPresetKey);
+        }
         return cfg;
     }
+
+    private EffectSettings LastEffects =>
+        _settings.LastEnhancement is { } last ? new EffectSettings(last.VolumePercent, last.BandsDb).Sanitized() : EffectSettings.Flat;
+
+    private string LastPresetKey =>
+        _settings.LastEnhancement is null ? "Flat" : FindPreset(_settings.LastEnhancement.Name)?.Name ?? CustomPresetKey;
+
+    private void RememberLast(AppEnhancementSettings cfg) =>
+        _settings.LastEnhancement = new PresetSettings { Name = cfg.Preset, VolumePercent = cfg.VolumePercent, BandsDb = cfg.BandsDb.ToArray() };
 
     private void UpdateRowStatuses()
     {
@@ -388,7 +410,7 @@ public sealed class EnhanceViewModel : ObservableObject, IDisposable
         _settings.CustomPresets.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase));
 
     private string PresetKeyFor(AppEnhancementSettings? cfg) =>
-        cfg is null ? "Flat" : FindPreset(cfg.Preset)?.Name ?? CustomPresetKey;
+        cfg is null ? LastPresetKey : FindPreset(cfg.Preset)?.Name ?? CustomPresetKey;
 
     private static string PresetLabel(string? preset) => string.IsNullOrEmpty(preset) ? "Custom" : preset;
 

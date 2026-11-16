@@ -5,6 +5,7 @@ A Windows 10/11 tray app for audio routing:
 - **Per-app output**: send each app to a chosen output device (Spotify → headphones, game → speakers).
 - **Multi-output**: play the same audio on several devices at once, kept in sync, with per-device delay and volume.
 - **Screen follow**: an app's audio follows the screen its window is on (e.g. move a video to the TV and its sound goes to the TV's HDMI audio).
+- **Quick controls in the notification area**: click the tray icon for the default output's volume and mute, plus a one-click switch of the Windows default output.
 - **Enhance**: per-app volume boost up to 400%, a 10-band equalizer, a peak limiter, and built-in plus your own presets (similar to FxSound, but per app).
 
 No virtual audio driver and no admin rights are needed.
@@ -34,12 +35,14 @@ dotnet publish src/Dismusic.App -c Release -r win-x64 --self-contained -p:Publis
 | Tab | What it does |
 |---|---|
 | Apps | Lists apps that have an audio session. Pick an output, or tick **Follow screen**. "Playing on now" shows the current routing and why. |
-| Multi-output | Pick a source and the devices that should get a copy, then **Start**. Delay (0–1000 ms) and volume can be changed while it runs. |
+| Multi-output | Pick a source and the devices that should get a copy, then **Start**. Delay (0–1000 ms) and copy volume can be changed while it runs. Under each device name are that device's own Windows volume and mute, the same as Windows' slider for it. |
 | Enhance | Tick an app to process it. Choose a preset (Flat, Bass boost, Music, Movie, Voice / podcast, Gaming, Treble boost, Loud, Max boost, Quiet) or set volume (0–400%) and the 10 EQ bands (±12 dB). Save the current settings as your own preset; editing any value switches the preset to "Custom". |
 | Screens | Map each monitor to an audio device. **Auto-detect** matches HDMI/DP audio by monitor name. |
 | Settings | Start with Windows (HKCU `Run` key, starts with `--tray`), start minimized, reset all app outputs, open the log folder. |
 
-Closing the window keeps the app in the notification area. Use **Exit** from the tray menu to quit.
+Closing the window keeps the app in the notification area (it may sit under "Show hidden icons").
+- **Left-click** the icon for quick controls: the default output's volume and mute, and the list of outputs (choosing one makes it the Windows default; apps that follow the default move to it). Esc or clicking elsewhere closes it.
+- **Right-click** for the menu: Open Dismusic, Output device, Screen follow, Multi-output, Exit.
 
 Multi-output sources:
 - **Everything on \<device\>**: endpoint loopback of that device, i.e. the classic "also play my speakers' audio on the headphones". This is the recommended source.
@@ -90,6 +93,8 @@ tests/Dismusic.Tests               xUnit tests
 | `mirror <device> [s]` | Audible: mirrors the default device to `<device>` and prints buffer/drift stats. |
 | `follow <exe>` | Which windows of `<exe>` screen-follow sees and which monitor each is on. |
 | `tonewindow [s]` | Opens a window that plays an inaudible tone, so you can test screen-follow on it. |
+| `defaulttest` | Switches the Windows default output to another device, checks it, and switches back. |
+| `volumetest` | Nudges the default device's volume by 1% and toggles mute, checks both, and restores them exactly. |
 | `enhancetest` | Full enhancer pipeline: a PowerShell process plays a -60 dB tone, gets attenuated to 1/256, captured, recovered and re-rendered. Checks the recovered level is exact, including with Dismusic's own volume at 50%. Skips if the output is muted. |
 | `taper [render] [ps]` | Capture gain versus app volume for another process. |
 | `devstate` | Each output device's master volume, mute and current peak. |
@@ -106,10 +111,12 @@ tests/Dismusic.Tests               xUnit tests
 - UWP/Store apps whose windows belong to `ApplicationFrameHost.exe` aren't matched for screen-follow.
 - **Enhance:**
   - Windows' volume mixer shows an enhanced app at 0%, which is expected. Control its level in Dismusic.
+  - If the output device has driver "audio enhancements" that react to level (e.g. loudness equalization), the enhanced app's level can differ slightly from the original (measured -0.2 dB on the development laptop's Realtek headphones). Turn those enhancements off for an exact result.
   - Processed audio is about 50–60 ms late, which may be noticeable as lip-sync offset in video.
   - Un-attenuated audio quieter than -42 dBFS isn't detected by the guard and can be boosted for up to 250 ms. This only happens in the moment an app opens a new audio stream on another device, and the limiter caps it at -1 dBFS.
   - If an app is closed while enhanced and Dismusic is then quit, Windows remembers that app at 0% until Dismusic sees it again (it restores the volume then), or until you raise it in the volume mixer.
   - "All apps except Dismusic" multi-output copies won't contain enhanced apps; use "Everything on \<device\>" instead.
+- Switching the default output uses `IPolicyConfig`, which Windows doesn't document but its own Sound settings use. `Diag defaulttest` checks it.
 - Rendering is forced to software mode, because WPF's GPU path produced a blank window on the development laptop. The UI is static, so the cost is negligible.
 
 ## Files

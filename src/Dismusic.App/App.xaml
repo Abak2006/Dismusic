@@ -24,6 +24,13 @@
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="FontSize" Value="12" />
         </Style>
+        <Style x:Key="IconToggle" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="30" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
         <Style x:Key="Row" TargetType="Border">
             <Setter Property="Padding" Value="12,10" />
             <Setter Property="BorderThickness" Value="0,0,0,1" />

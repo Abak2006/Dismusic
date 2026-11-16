@@ -117,11 +117,15 @@ public sealed class MirrorTargetViewModel(string deviceId, Action<MirrorTargetVi
     public string Status { get => _status; set => Set(ref _status, value); }
     public bool HasError { get => _hasError; set => Set(ref _hasError, value); }
 
+    /// <summary>The device itself (Windows volume and mute), shown on the row.</summary>
+    public DeviceViewModel? Device { get => _device; set => Set(ref _device, value); }
+    private DeviceViewModel? _device;
+
     /// <summary>The source's original audio already plays on this device, so no copy is sent here.</summary>
     public bool IsOriginal { get => _isOriginal; set => Set(ref _isOriginal, value); }
     private bool _isOriginal;
     public string DelayAutomationName => $"Delay for {Name} in milliseconds";
-    public string VolumeAutomationName => $"Volume for {Name} in percent";
+    public string VolumeAutomationName => $"Copy volume for {Name} in percent";
 
     public void Load(bool enabled, int delayMs, int volume)
     {

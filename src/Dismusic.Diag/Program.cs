@@ -37,6 +37,8 @@ try
         case "resetownvolume": ResetOwnVolume(); break;
         case "devloop": DeviceLoopbackOwnVolume(); break;
         case "devstate": DeviceState(); break;
+        case "defaulttest": return DefaultDeviceTest();
+        case "volumetest": return DeviceVolumeTest();
         case "resetpowershellvolume": ResetPowerShellVolume(); break;
         case "mirrortest": return MirrorSelfTest(args.Length > 1 ? int.Parse(args[1]) : 6);
         case "all":
@@ -45,7 +47,9 @@ try
             int b = Capture(2);
             int c = MirrorSelfTest(6);
             int d = EnhanceSelfTest();
-            return new[] { a, b, c, d }.FirstOrDefault(x => x != 0);
+            int e = DefaultDeviceTest();
+            int f = DeviceVolumeTest();
+            return new[] { a, b, c, d, e, f }.FirstOrDefault(x => x != 0);
         default:
             Console.Error.WriteLine($"Unknown command '{command}'.");
             return 2;
@@ -336,6 +340,19 @@ static int EnhanceSelfTest()
     if (original < 0.02f) { Console.WriteLine($"  NOTE: powershell.exe volume was {original:F4} (left by an earlier run); restoring 100% afterwards"); original = 1f; }
 
     var device = audio.GetRenderDevices().First(d => d.IsDefault);
+
+    // Reference: what Windows delivers for this app un-attenuated on this device. Endpoint effects (e.g. a
+    // driver's "enhancements") can change the level, so the file's own amplitude isn't the right yardstick.
+    float reference = 0;
+    using (var cap = new ProcessLoopbackCapture((uint)child.Id, includeProcessTree: true))
+    {
+        cap.DataAvailable += (b, n) => { for (int i = 0; i < n; i++) reference = Math.Max(reference, Math.Abs(b[i])); };
+        cap.Start(); Thread.Sleep(1200); cap.Stop();
+    }
+    if (reference <= 0) { Console.WriteLine("  SKIP: no audio reached capture (device muted or effects silencing it)"); child.Kill(); return 0; }
+    // Bit-exact on devices without level-dependent effects; a driver's loudness/enhancement processing can shift
+    // the quiet (attenuated) stream slightly, so allow 5% (0.4 dB) and report the actual deviation.
+    bool Near(float peak) => Math.Abs(peak - reference) <= reference * 0.05f;
     using var engine = new EnhancerEngine();
     try
     {
@@ -347,8 +364,8 @@ static int EnhanceSelfTest()
         engine.SetOwnSessionVolume(audio.GetSessionVolume(self) ?? 1f);
         Thread.Sleep(1700);
         var s1 = engine.GetStats().Single();
-        bool recovered = Math.Abs(s1.InputPeak - 0.001f) < 0.0001f && s1.GuardTrips == 0;
-        Console.WriteLine($"  attenuated: recovered peak {s1.InputPeak:F6} (expect 0.001000), buffer {s1.BufferedMs:F0} ms, underruns {s1.Underruns}, guard trips {s1.GuardTrips}");
+        bool recovered = Near(s1.InputPeak) && s1.GuardTrips == 0;
+        Console.WriteLine($"  attenuated: recovered peak {s1.InputPeak:F6} (un-attenuated reference {reference:F6}), buffer {s1.BufferedMs:F0} ms, underruns {s1.Underruns}, guard trips {s1.GuardTrips}");
 
         // The guard itself is unit-tested (AudioProcessorTests); a tone loud enough to trip it would be audible.
         audio.SetSessionVolume(tree, 0.5f); // simulate the user moving the app's slider
@@ -356,17 +373,20 @@ static int EnhanceSelfTest()
         audio.SetSessionVolume(tree, EnhancerEngine.AttenuatedSessionVolume); // what the app does every 250 ms
         Thread.Sleep(1000);
         var s2 = engine.GetStats().Single();
-        bool resumed = Math.Abs(s2.InputPeak - 0.001f) < 0.0001f;
+        bool resumed = Near(s2.InputPeak);
         Console.WriteLine($"  after re-attenuating: recovered peak {s2.InputPeak:F6}, underruns {s2.Underruns}");
 
         audio.SetSessionVolume(self, 0.5f); // user turns Dismusic down in the mixer
         engine.SetOwnSessionVolume(0.5f);
         Thread.Sleep(1000);
         var s3 = engine.GetStats().Single();
-        bool compensated = Math.Abs(s3.InputPeak - 0.001f) < 0.0001f;
-        Console.WriteLine($"  own volume 50%: recovered peak {s3.InputPeak:F6} (compensated, expect 0.001)");
+        bool compensated = Near(s3.InputPeak);
+        Console.WriteLine($"  own volume 50%: recovered peak {s3.InputPeak:F6} (compensated, expect {reference:F6})");
         audio.SetSessionVolume(self, 1f);
 
+        double deviationDb = 20 * Math.Log10(s1.InputPeak / reference);
+        Console.WriteLine($"  deviation from reference: {deviationDb:+0.00;-0.00} dB" +
+            (Math.Abs(deviationDb) > 0.05 ? " (this device's audio effects process quiet audio differently; turn off its enhancements for exact results)" : " (exact)"));
         bool ok = recovered && resumed && compensated;
         Console.WriteLine(ok ? "  PASS" : "  FAIL");
         return ok ? 0 : 1;
@@ -503,4 +523,56 @@ static void DeviceState()
     foreach (var d in e.EnumerateAudioEndPoints(NAudio.CoreAudioApi.DataFlow.Render, NAudio.CoreAudioApi.DeviceState.Active))
         using (d)
             Console.WriteLine($"  {d.FriendlyName}: master {d.AudioEndpointVolume.MasterVolumeLevelScalar:F2} muted={d.AudioEndpointVolume.Mute} peak={d.AudioMeterInformation.MasterPeakValue:F4}");
+}
+
+// Switches the Windows default output to another device, checks Windows reports it, then switches back.
+static int DefaultDeviceTest()
+{
+    Console.WriteLine("== Default device switch self-test ==");
+    using var audio = new AudioSystem();
+    var devices = audio.GetRenderDevices();
+    var original = devices.FirstOrDefault(d => d.IsDefault);
+    var other = devices.FirstOrDefault(d => !d.IsDefault);
+    if (original is null || other is null) { Console.WriteLine("  SKIP: needs two output devices"); return 0; }
+    try
+    {
+        DefaultDevice.Set(other.Id);
+        Thread.Sleep(300);
+        bool switched = audio.GetRenderDevices().First(d => d.IsDefault).Id == other.Id;
+        Console.WriteLine($"  {original.Name} -> {other.Name}: {(switched ? "ok" : "NOT switched")}");
+        return switched ? Pass() : 1;
+    }
+    finally
+    {
+        DefaultDevice.Set(original.Id);
+        Thread.Sleep(300);
+        Console.WriteLine($"  restored default: {audio.GetRenderDevices().First(d => d.IsDefault).Name}");
+    }
+    static int Pass() { Console.WriteLine("  PASS"); return 0; }
+}
+
+// Nudges the default device's volume by 1%, reads it back, and restores the exact original value and mute.
+static int DeviceVolumeTest()
+{
+    Console.WriteLine("== Device volume self-test ==");
+    using var audio = new AudioSystem();
+    var device = audio.GetRenderDevices().First(d => d.IsDefault);
+    float target = device.Volume >= 0.5f ? device.Volume - 0.01f : device.Volume + 0.01f;
+    try
+    {
+        audio.SetDeviceVolume(device.Id, target);
+        audio.SetDeviceMute(device.Id, !device.IsMuted);
+        var after = audio.GetRenderDevices().First(d => d.Id == device.Id);
+        bool ok = Math.Abs(after.Volume - target) < 0.002f && after.IsMuted != device.IsMuted;
+        Console.WriteLine($"  {device.Name}: {device.Volume:P0} -> {after.Volume:P1}, mute {device.IsMuted} -> {after.IsMuted}");
+        Console.WriteLine(ok ? "  PASS" : "  FAIL");
+        return ok ? 0 : 1;
+    }
+    finally
+    {
+        audio.SetDeviceVolume(device.Id, device.Volume);
+        audio.SetDeviceMute(device.Id, device.IsMuted);
+        var restored = audio.GetRenderDevices().First(d => d.Id == device.Id);
+        Console.WriteLine($"  restored: {restored.Volume:P1}, muted={restored.IsMuted}");
+    }
 }

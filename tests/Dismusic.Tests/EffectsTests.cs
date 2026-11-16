@@ -195,6 +195,26 @@ public sealed class EnhanceSettingsTests : IDisposable
         Assert.Equal(1f, s.SavedAppVolumes["brave.exe"]);
     }
 
+    [Fact]
+    public void RemembersLastEnhancementAndAutostartFlag()
+    {
+        var file = Path.Combine(_dir, "remember.json");
+        var store = new SettingsStore(file);
+        var s = new AppSettings
+        {
+            AutostartConfigured = true,
+            LastEnhanceApp = "spotify.exe",
+            LastEnhancement = new PresetSettings { Name = "Bass boost", VolumePercent = 150, BandsDb = [6, 5, 4, 2, 0, 0, 0, 0, 0, 0] },
+        };
+        store.Save(s);
+        var loaded = store.Load(out _);
+        Assert.True(loaded.AutostartConfigured);
+        Assert.Equal("spotify.exe", loaded.LastEnhanceApp);
+        Assert.Equal("Bass boost", loaded.LastEnhancement!.Name);
+        Assert.Equal(150, loaded.LastEnhancement.VolumePercent);
+        Assert.Equal(6, loaded.LastEnhancement.BandsDb[0]);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
