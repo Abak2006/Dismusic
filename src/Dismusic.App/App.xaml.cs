@@ -68,15 +68,16 @@ public partial class App : Application
             return;
         }
 
-        _window = new MainWindow { DataContext = _viewModel };
+        Wpf.Ui.Appearance.ApplicationThemeManager.ApplySystemTheme(true);
+        _tray = new TrayIcon(_viewModel, ShowWindow, ToggleFlyout, ExitApp);
+        var icon = Imaging.CreateBitmapSourceFromHIcon(_tray.Image.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+        _window = new MainWindow(_viewModel, icon);
         _window.Closing += (_, args) =>
         {
             if (_exiting) return;
             args.Cancel = true; // keep running in the tray
             _window.Hide();
         };
-        _tray = new TrayIcon(_viewModel, ShowWindow, ToggleFlyout, ExitApp);
-        _window.Icon = Imaging.CreateBitmapSourceFromHIcon(_tray.Image.Handle, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
 
         _activateWait = ThreadPool.RegisterWaitForSingleObject(_activateEvent,
             (_, _) => Dispatcher.BeginInvoke(ShowWindow), null, Timeout.Infinite, executeOnlyOnce: false);

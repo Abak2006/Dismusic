@@ -1,404 +1,67 @@
-<Window x:Class="Dismusic.App.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:vm="clr-namespace:Dismusic.App.ViewModels"
-        mc:Ignorable="d"
-        d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
-        Title="Dismusic" Width="980" Height="640" MinWidth="780" MinHeight="460"
-        WindowStartupLocation="CenterScreen">
-    <DockPanel>
-        <!-- Persistent problems (routing unavailable, settings reset) -->
-        <Border DockPanel.Dock="Top" Padding="16,10"
-                Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
-                Visibility="{Binding RoutingWarning, Converter={StaticResource NullToCollapsed}}">
-            <TextBlock Text="{Binding RoutingWarning}" TextWrapping="Wrap" />
-        </Border>
+<ui:FluentWindow x:Class="Dismusic.App.MainWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:Dismusic.App.ViewModels"
+                 xmlns:views="clr-namespace:Dismusic.App.Views"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+                 Title="Dismusic" Width="1040" Height="680" MinWidth="860" MinHeight="500"
+                 WindowStartupLocation="CenterScreen"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="Mica" WindowCornerPreference="Round"
+                 FontFamily="{StaticResource AppFont}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
-        <!-- Transient status line -->
-        <Border DockPanel.Dock="Bottom" Padding="16,6"
-                Visibility="{Binding StatusText, Converter={StaticResource NullToCollapsed}}">
-            <TextBlock Text="{Binding StatusText}" Style="{StaticResource Hint}" />
-        </Border>
+        <ui:TitleBar x:Name="AppTitleBar" Title="Dismusic" CloseWindowByDoubleClickOnIcon="False" />
 
-        <TabControl Margin="12,8,12,8">
-            <!-- ================= Apps ================= -->
-            <TabItem Header="Apps">
-                <Grid Margin="4,12,4,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,12"
-                               Text="Choose an output for each app, or tick Follow screen to send it to the speakers of whichever screen its window is on (set those up in the Screens tab)." />
+        <!-- App-wide messages. Routing problems stay; transient status can be dismissed. -->
+        <StackPanel Grid.Row="1" Margin="16,0,16,0">
+            <ui:InfoBar Title="Limited" Message="{Binding RoutingWarning}" Severity="Warning" IsClosable="False"
+                        IsOpen="{Binding HasRoutingWarning, Mode=OneWay}" Margin="0,0,0,6" />
+            <ui:InfoBar Message="{Binding StatusText}" Severity="Informational"
+                        IsOpen="{Binding IsStatusOpen, Mode=TwoWay}" Margin="0,0,0,6" />
+        </StackPanel>
 
-                    <Grid Grid.Row="1" Margin="12,0,12,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" MinWidth="180" />
-                            <ColumnDefinition Width="280" />
-                            <ColumnDefinition Width="150" />
-                            <ColumnDefinition Width="240" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="App" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="1" Text="Output" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="2" Text="Screen" Style="{StaticResource ColumnHeader}" Margin="12,0,0,0" />
-                        <TextBlock Grid.Column="3" Text="Playing on now" Style="{StaticResource ColumnHeader}" />
-                    </Grid>
-
-                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False">
-                        <StackPanel>
-                            <TextBlock Style="{StaticResource Hint}" Margin="12,16"
-                                       Visibility="{Binding HasApps, Converter={StaticResource BoolToCollapsed}}"
-                                       Text="No apps are playing audio right now. Start playback in an app (a browser, Spotify, a game…) and it shows up here within a couple of seconds." />
-                            <ItemsControl ItemsSource="{Binding Apps}" IsTabStop="False">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:AppRowViewModel}">
-                                        <Border Style="{StaticResource Row}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" MinWidth="180" />
-                                                    <ColumnDefinition Width="280" />
-                                                    <ColumnDefinition Width="150" />
-                                                    <ColumnDefinition Width="240" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Style="{StaticResource Hint}" FontSize="12">
-                                                        <Run Text="{Binding ExeKey, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding StatusText, Mode=OneWay}" />
-                                                    </TextBlock>
-                                                </StackPanel>
-                                                <ComboBox Grid.Column="1" VerticalAlignment="Center"
-                                                          ItemsSource="{Binding DataContext.DeviceOptions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                          SelectedValuePath="Key" DisplayMemberPath="Name"
-                                                          SelectedValue="{Binding SelectedDeviceId}"
-                                                          IsEnabled="{Binding DataContext.CanRoute, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                          AutomationProperties.Name="{Binding OutputAutomationName}" />
-                                                <CheckBox Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center"
-                                                          Content="Follow screen" IsChecked="{Binding Follow}"
-                                                          IsEnabled="{Binding DataContext.CanRoute, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                          AutomationProperties.Name="{Binding FollowAutomationName}" />
-                                                <StackPanel Grid.Column="3" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding NowOnText}" TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding ErrorText}" Style="{StaticResource ErrorText}"
-                                                               Visibility="{Binding ErrorText, Converter={StaticResource NullToCollapsed}}" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Style="{StaticResource Hint}" Margin="12,16,12,8" FontSize="12"
-                                       Text="Most apps switch output instantly. A few (some games and apps that pick their own device) only switch after you restart playback or the app." />
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </TabItem>
-
-            <!-- ================= Multi-output ================= -->
-            <TabItem Header="Multi-output">
-                <Grid Margin="4,12,4,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,12"
-                               Text="Play the same audio on several devices at once. The original keeps playing where it already does; the devices you turn on below get a copy, kept in sync automatically." />
-
-                    <Grid Grid.Row="1" Margin="0,0,0,16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" MaxWidth="460" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <Label Content="_Source" Target="{Binding ElementName=SourceBox}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                        <ComboBox x:Name="SourceBox" Grid.Column="1" VerticalAlignment="Center"
-                                  ItemsSource="{Binding MirrorSources}" SelectedValuePath="Key" DisplayMemberPath="Name"
-                                  SelectedValue="{Binding MirrorSourceKey}" IsEnabled="{Binding CanEditSource}" />
-                        <Button Grid.Column="2" Margin="12,0,0,0" MinWidth="96" Content="{Binding MirrorButtonText}"
-                                Command="{Binding ToggleMirrorCommand}" Style="{DynamicResource AccentButtonStyle}" />
-                        <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
-                                   Text="{Binding MirrorStatus}" AutomationProperties.LiveSetting="Polite" />
-                    </Grid>
-
-                    <Grid Grid.Row="2" Margin="12,0,12,6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" MinWidth="200" />
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="180" />
-                            <ColumnDefinition Width="220" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Text="Play a copy on · device volume" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="1" Text="Delay" Style="{StaticResource ColumnHeader}" />
-                        <TextBlock Grid.Column="2" Text="Copy volume" Style="{StaticResource ColumnHeader}"
-                                   ToolTip="Level of the copy only. The device volume under each name is the device's own Windows volume." />
-                        <TextBlock Grid.Column="3" Text="Status" Style="{StaticResource ColumnHeader}" />
-                    </Grid>
-
-                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Focusable="False">
-                        <StackPanel>
-                            <ItemsControl ItemsSource="{Binding MirrorTargets}" IsTabStop="False">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:MirrorTargetViewModel}">
-                                        <Border Style="{StaticResource Row}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" MinWidth="200" />
-                                                    <ColumnDefinition Width="220" />
-                                                    <ColumnDefinition Width="180" />
-                                                    <ColumnDefinition Width="220" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                                                    <CheckBox IsChecked="{Binding Enabled}" AutomationProperties.Name="{Binding Name}">
-                                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" />
-                                                    </CheckBox>
-                                                    <DockPanel DataContext="{Binding Device}" Margin="28,4,0,0" LastChildFill="True">
-                                                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource IconToggle}"
-                                                                      IsChecked="{Binding IsMuted}" Content="{Binding Glyph}"
-                                                                      AutomationProperties.Name="{Binding MuteAutomationName}"
-                                                                      ToolTip="Mute or unmute this device in Windows" />
-                                                        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" MinWidth="40" Margin="8,0,0,0">
-                                                            <Run Text="{Binding Volume, Mode=OneWay}" /><Run Text="%" />
-                                                        </TextBlock>
-                                                        <Slider VerticalAlignment="Center" MaxWidth="160" Minimum="0" Maximum="100"
-                                                                SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True"
-                                                                Value="{Binding Volume}" AutomationProperties.Name="{Binding VolumeAutomationName}"
-                                                                ToolTip="This device's Windows volume (affects everything playing on it)" />
-                                                    </DockPanel>
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <Slider Width="150" Minimum="0" Maximum="1000" SmallChange="10" LargeChange="50"
-                                                            TickFrequency="10" IsSnapToTickEnabled="True"
-                                                            Value="{Binding DelayMs}" AutomationProperties.Name="{Binding DelayAutomationName}" />
-                                                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" MinWidth="56">
-                                                        <Run Text="{Binding DelayMs, Mode=OneWay}" /><Run Text=" ms" />
-                                                    </TextBlock>
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <Slider Width="110" Minimum="0" Maximum="100" SmallChange="1" LargeChange="10"
-                                                            TickFrequency="1" IsSnapToTickEnabled="True"
-                                                            Value="{Binding Volume}" AutomationProperties.Name="{Binding VolumeAutomationName}" />
-                                                    <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" MinWidth="40">
-                                                        <Run Text="{Binding Volume, Mode=OneWay}" /><Run Text="%" />
-                                                    </TextBlock>
-                                                </StackPanel>
-                                                <TextBlock Grid.Column="3" VerticalAlignment="Center" TextWrapping="Wrap" Text="{Binding Status}">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasError}" Value="True">
-                                                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Style="{StaticResource Hint}" Margin="12,16,12,4" FontSize="12"
-                                       Text="Copies run about 60–80 ms behind the original. If the original plays on Bluetooth (which is slower), that gap may already cancel out; otherwise add delay to whichever device sounds early until they line up." />
-                            <TextBlock Style="{StaticResource Hint}" Margin="12,4,12,8" FontSize="12"
-                                       Text="Devices where the source already plays are skipped automatically, so you don't hear it twice. Two cases Dismusic can't see: with 'All apps' it can't tell which app plays where, and an audio enhancer (e.g. FxSound) re-plays its audio on another device. Don't add a device those already play on." />
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </TabItem>
-
-            <!-- ================= Enhance ================= -->
-            <TabItem Header="Enhance">
-                <Grid Margin="4,12,4,0" DataContext="{Binding Enhance}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,12"
-                               Text="Boost an app beyond 100% and shape its sound with a 10-band equalizer. Pick a preset or make your own. A limiter stops boosted audio from clipping." />
-
-                    <Grid Grid.Row="1">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="280" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- App list -->
-                        <DockPanel Margin="0,0,16,0">
-                            <TextBlock DockPanel.Dock="Top" Text="Apps" Style="{StaticResource ColumnHeader}" Margin="4,0,0,6" />
-                            <TextBlock DockPanel.Dock="Top" Style="{StaticResource Hint}" Margin="4,8"
-                                       Visibility="{Binding HasApps, Converter={StaticResource BoolToCollapsed}}"
-                                       Text="No apps are playing audio right now. Start playback and the app shows up here." />
-                            <ListBox ItemsSource="{Binding Apps}" SelectedItem="{Binding Selected}"
-                                     AutomationProperties.Name="Apps to enhance">
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:EnhanceAppViewModel}">
-                                        <DockPanel Margin="0,4">
-                                            <CheckBox DockPanel.Dock="Left" VerticalAlignment="Center" IsChecked="{Binding Enabled}"
-                                                      AutomationProperties.Name="{Binding EnableAutomationName}" Margin="0,0,8,0" />
-                                            <StackPanel>
-                                                <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Text="{Binding StatusText}" Style="{StaticResource Hint}" FontSize="12" TextTrimming="CharacterEllipsis" />
-                                            </StackPanel>
-                                        </DockPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
-                        </DockPanel>
-
-                        <!-- Selected app -->
-                        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" Focusable="False"
-                                      Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisible}}">
-                            <StackPanel Margin="0,0,8,0">
-                                <StackPanel DataContext="{Binding Selected}">
-                                    <TextBlock Text="{Binding DisplayName}" FontSize="20" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                    <CheckBox Content="Enhance this app" IsChecked="{Binding Enabled}" Margin="0,0,0,16" />
-
-                                    <Grid Margin="0,0,0,16">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="90" />
-                                            <ColumnDefinition Width="*" MaxWidth="320" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="12" />
-                                            <RowDefinition Height="Auto" />
-                                        </Grid.RowDefinitions>
-                                        <Label Content="_Preset" Target="{Binding ElementName=PresetBox}" VerticalAlignment="Center" />
-                                        <ComboBox x:Name="PresetBox" Grid.Column="1"
-                                                  ItemsSource="{Binding DataContext.Enhance.Presets, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                  SelectedValuePath="Key" DisplayMemberPath="Name" SelectedValue="{Binding PresetKey}" />
-                                        <Label Grid.Row="2" Content="_Volume" Target="{Binding ElementName=BoostSlider}" VerticalAlignment="Center" />
-                                        <Slider x:Name="BoostSlider" Grid.Row="2" Grid.Column="1" VerticalAlignment="Center"
-                                                Minimum="0" Maximum="400" SmallChange="5" LargeChange="25" TickFrequency="5" IsSnapToTickEnabled="True"
-                                                Value="{Binding VolumePercent}" AutomationProperties.Name="Volume percent"
-                                                AutomationProperties.HelpText="Above 100 boosts the app." />
-                                        <TextBlock Grid.Row="2" Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center" MinWidth="48">
-                                            <Run Text="{Binding VolumePercent, Mode=OneWay}" /><Run Text="%" />
-                                        </TextBlock>
-                                    </Grid>
-
-                                    <TextBlock Text="Equalizer (dB)" Style="{StaticResource ColumnHeader}" Margin="0,0,0,8" />
-                                    <ItemsControl ItemsSource="{Binding Bands}" IsTabStop="False">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <UniformGrid Rows="1" HorizontalAlignment="Left" />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate DataType="{x:Type vm:BandViewModel}">
-                                                <StackPanel Width="48" HorizontalAlignment="Center">
-                                                    <TextBlock Text="{Binding GainText}" HorizontalAlignment="Center" FontSize="12" />
-                                                    <Slider Orientation="Vertical" Height="150" HorizontalAlignment="Center" Margin="0,4"
-                                                            Minimum="-12" Maximum="12" SmallChange="0.5" LargeChange="3"
-                                                            TickFrequency="0.5" IsSnapToTickEnabled="True"
-                                                            Value="{Binding Gain}" AutomationProperties.Name="{Binding AutomationName}" />
-                                                    <TextBlock Text="{Binding Label}" HorizontalAlignment="Center" Style="{StaticResource Hint}" FontSize="12" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-
-                                <WrapPanel Margin="0,16,0,0">
-                                    <Button Content="Reset to flat" Command="{Binding ResetCommand}" Margin="0,0,12,8" />
-                                    <TextBox Width="180" Text="{Binding NewPresetName, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,8"
-                                             AutomationProperties.Name="New preset name" ToolTip="Name for a new preset" />
-                                    <Button Content="Save as preset" Command="{Binding SavePresetCommand}" Margin="0,0,12,8" />
-                                    <Button Content="Delete preset" Command="{Binding DeletePresetCommand}" Margin="0,0,0,8"
-                                            ToolTip="Delete the selected preset (only presets you made)" />
-                                </WrapPanel>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Grid>
-
-                    <StackPanel Grid.Row="2" Margin="0,12,0,8">
-                        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Margin="0,0,0,6"
-                                   Visibility="{Binding StatusText, Converter={StaticResource NullToCollapsed}}" AutomationProperties.LiveSetting="Polite" />
-                        <TextBlock Style="{StaticResource Hint}" FontSize="12"
-                                   Text="How it works without a driver: Dismusic turns the app down to 0% in Windows (-48 dB, inaudible), captures it, restores the exact original signal, applies your settings and plays it on the same device, about 50–60 ms later. App volumes are put back when you turn enhancement off or quit Dismusic." />
-                    </StackPanel>
-                </Grid>
-            </TabItem>
-
-            <!-- ================= Screens ================= -->
-            <TabItem Header="Screens">
-                <Grid Margin="4,12,4,0">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock Style="{StaticResource Hint}" Margin="0,0,0,12"
-                               Text="Tell Dismusic which speakers belong to each screen. Apps with Follow screen turned on switch to that output when you move their window there." />
-                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
-                        <CheckBox Content="Screen follow is on" IsChecked="{Binding ScreenFollowEnabled}" VerticalAlignment="Center" />
-                        <Button Content="Auto-detect" Margin="16,0,0,0" Command="{Binding AutoDetectMonitorsCommand}"
-                                ToolTip="Match screens to audio devices by name (fills only screens that aren't mapped yet)" />
-                    </StackPanel>
-                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Focusable="False">
-                        <StackPanel>
-                            <ItemsControl ItemsSource="{Binding Monitors}" IsTabStop="False">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:MonitorRowViewModel}">
-                                        <Border Style="{StaticResource Row}">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" MinWidth="200" />
-                                                    <ColumnDefinition Width="320" />
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding Details}" Style="{StaticResource Hint}" FontSize="12" />
-                                                </StackPanel>
-                                                <ComboBox Grid.Column="1" VerticalAlignment="Center"
-                                                          ItemsSource="{Binding DataContext.MonitorDeviceOptions, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                          SelectedValuePath="Key" DisplayMemberPath="Name"
-                                                          SelectedValue="{Binding SelectedDeviceId}"
-                                                          AutomationProperties.Name="{Binding AutomationName}" />
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Style="{StaticResource Hint}" Margin="12,16,12,4" FontSize="12"
-                                       Text="Windows routes audio per app, not per window. If one app has windows on two screens (e.g. two browser windows), the window on top decides where all of that app's audio goes." />
-                            <TextBlock Style="{StaticResource Hint}" Margin="12,4,12,8" FontSize="12"
-                                       Text="When a following app's window is on a screen that isn't mapped, it uses its fixed output from the Apps tab, or the Windows default if it has none." />
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </TabItem>
-
-            <!-- ================= Settings ================= -->
-            <TabItem Header="Settings">
-                <StackPanel Margin="4,16,4,0" MaxWidth="640" HorizontalAlignment="Left">
-                    <CheckBox Content="Start Dismusic when I sign in to Windows" IsChecked="{Binding StartWithWindows}" Margin="0,0,0,8" />
-                    <CheckBox Content="Start minimized to the notification area" IsChecked="{Binding StartMinimized}" Margin="0,0,0,8" />
-                    <TextBlock Style="{StaticResource Hint}" FontSize="12" Margin="0,0,0,20"
-                               Text="When Dismusic starts with Windows it opens in the notification area, and apps you enhanced are enhanced again with the settings you last chose as soon as they play." />
-
-                    <TextBlock Text="Closing this window keeps Dismusic running in the notification area so your routing keeps working. Use Exit from its icon menu to quit."
-                               Style="{StaticResource Hint}" Margin="0,0,0,20" />
-
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <Button Content="Reset all app outputs…" Command="{Binding ResetAllRoutesCommand}" />
-                        <Button Content="Open log folder" Margin="12,0,0,0" Command="{Binding OpenLogFolderCommand}" />
-                    </StackPanel>
-
-                    <TextBlock Style="{StaticResource Hint}" FontSize="12" Margin="0,20,0,0">
-                        <Run Text="Version " /><Run Text="{Binding Version, Mode=OneWay}" />
-                        <LineBreak />
-                        <Run Text="Settings file: " /><Run Text="{Binding SettingsPath, Mode=OneWay}" />
-                    </TextBlock>
-                </StackPanel>
-            </TabItem>
-        </TabControl>
-    </DockPanel>
-</Window>
+        <ui:NavigationView x:Name="RootNavigation" Grid.Row="2"
+                           PaneDisplayMode="Left" OpenPaneLength="208" CompactPaneLength="48"
+                           IsBackButtonVisible="Collapsed" IsPaneToggleVisible="True"
+                           FrameMargin="0" Transition="None">
+            <ui:NavigationView.MenuItems>
+                <ui:NavigationViewItem Content="Apps" TargetPageType="{x:Type views:AppsPage}" ToolTip="Per-app output (Ctrl+1)">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="Apps24" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+                <ui:NavigationViewItem Content="Multi-output" TargetPageType="{x:Type views:MultiOutputPage}" ToolTip="Play on several devices (Ctrl+2)">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="ArrowSplit24" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+                <ui:NavigationViewItem Content="Enhance" TargetPageType="{x:Type views:EnhancePage}" ToolTip="Boost and equalizer (Ctrl+3)">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="DeviceEq24" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+                <ui:NavigationViewItem Content="Screens" TargetPageType="{x:Type views:ScreensPage}" ToolTip="Audio follows the screen (Ctrl+4)">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="DesktopSpeaker24" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+            </ui:NavigationView.MenuItems>
+            <ui:NavigationView.FooterMenuItems>
+                <ui:NavigationViewItem Content="Settings" TargetPageType="{x:Type views:SettingsPage}" ToolTip="Settings (Ctrl+5)">
+                    <ui:NavigationViewItem.Icon>
+                        <ui:SymbolIcon Symbol="Settings24" />
+                    </ui:NavigationViewItem.Icon>
+                </ui:NavigationViewItem>
+            </ui:NavigationView.FooterMenuItems>
+        </ui:NavigationView>
+    </Grid>
+</ui:FluentWindow>

@@ -8,7 +8,7 @@ namespace Dismusic.App;
 /// Small panel shown when the tray icon is clicked: default output volume/mute and output switching.
 /// Opens above the notification area and hides when it loses focus or Esc is pressed.
 /// </summary>
-public partial class TrayFlyout : Window
+public partial class TrayFlyout : Wpf.Ui.Controls.FluentWindow
 {
     private const double ScreenMargin = 12;
     private readonly MainViewModel _viewModel;
@@ -21,6 +21,7 @@ public partial class TrayFlyout : Window
         _viewModel = viewModel;
         _openMain = openMain;
         DataContext = viewModel;
+        Loaded += (_, _) => Wpf.Ui.Appearance.SystemThemeWatcher.Watch(this);
         Deactivated += (_, _) => HideFlyout();
         KeyDown += (_, e) =>
         {
@@ -44,8 +45,7 @@ public partial class TrayFlyout : Window
         var area = SystemParameters.WorkArea; // excludes the taskbar
         Left = area.Right - ActualWidth - ScreenMargin;
         Top = area.Bottom - ActualHeight - ScreenMargin;
-        Activate();
-        VolumeSlider.Focus();
+        Activate(); // keyboard users can Tab straight to the volume slider
     }
 
     private void HideFlyout()

@@ -1,0 +1,143 @@
+<Page x:Class="Dismusic.App.Views.MultiOutputPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:vm="clr-namespace:Dismusic.App.ViewModels"
+      mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+      Title="Multi-output" ScrollViewer.CanContentScroll="False"
+      Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontFamily="{StaticResource AppFont}">
+    <Grid Margin="24,12,24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Multi-output" Style="{StaticResource PageTitle}" />
+        <TextBlock Grid.Row="1" Style="{StaticResource Hint}" Margin="0,2,0,12"
+                   Text="Play the same audio on several devices at once. The original keeps playing where it is; the devices you turn on get a synced copy." />
+
+        <!-- Command bar -->
+        <Border Grid.Row="2" Style="{StaticResource Row}" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" MaxWidth="440" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Label Content="_Source" Target="{Binding ElementName=SourceBox}" VerticalAlignment="Center" Margin="0,0,10,0" Padding="0" />
+                <ComboBox x:Name="SourceBox" Grid.Column="1" VerticalAlignment="Center"
+                          ItemsSource="{Binding MirrorSources}" SelectedValuePath="Key" DisplayMemberPath="Name"
+                          SelectedValue="{Binding MirrorSourceKey}" IsEnabled="{Binding CanEditSource}" />
+                <ui:Button Grid.Column="2" Margin="12,0,0,0" MinWidth="96" Appearance="Primary"
+                           Content="{Binding MirrorButtonText}" Command="{Binding ToggleMirrorCommand}">
+                    <ui:Button.Style>
+                        <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                            <Setter Property="Icon" Value="{ui:SymbolIcon Play24}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding MirrorRunning}" Value="True">
+                                    <Setter Property="Icon" Value="{ui:SymbolIcon Stop24}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ui:Button.Style>
+                </ui:Button>
+                <TextBlock Grid.Column="3" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="13"
+                           Text="{Binding MirrorStatus}" AutomationProperties.LiveSetting="Polite" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="3" Margin="15,0,15,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="200" />
+                <ColumnDefinition Width="180" />
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="*" MinWidth="140" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Device · its Windows volume" Style="{StaticResource ColumnHeader}" />
+            <TextBlock Grid.Column="1" Text="Delay" Style="{StaticResource ColumnHeader}" />
+            <TextBlock Grid.Column="2" Text="Copy volume" Style="{StaticResource ColumnHeader}"
+                       ToolTip="Level of the copy only. The slider under each device name is that device's own Windows volume." />
+            <TextBlock Grid.Column="3" Text="Status" Style="{StaticResource ColumnHeader}" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <ItemsControl ItemsSource="{Binding MirrorTargets}" IsTabStop="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:MirrorTargetViewModel}">
+                        <Border Style="{StaticResource Row}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" MinWidth="200" />
+                                    <ColumnDefinition Width="180" />
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" MinWidth="140" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <CheckBox IsChecked="{Binding Enabled}" AutomationProperties.Name="{Binding Name}"
+                                              ToolTip="Send a copy to this device">
+                                        <TextBlock Text="{Binding Name}" TextWrapping="Wrap" FontSize="14" />
+                                    </CheckBox>
+                                    <DockPanel DataContext="{Binding Device}" Margin="28,2,0,0">
+                                        <ToggleButton DockPanel.Dock="Left" Style="{StaticResource IconToggle}"
+                                                      IsChecked="{Binding IsMuted}" Content="{Binding Glyph}"
+                                                      AutomationProperties.Name="{Binding MuteAutomationName}"
+                                                      ToolTip="Mute or unmute this device in Windows" />
+                                        <TextBlock DockPanel.Dock="Right" VerticalAlignment="Center" MinWidth="38" Margin="8,0,0,0" FontSize="12">
+                                            <Run Text="{Binding Volume, Mode=OneWay}" /><Run Text="%" />
+                                        </TextBlock>
+                                        <Slider VerticalAlignment="Center" MaxWidth="170" Margin="8,0,0,0" Minimum="0" Maximum="100"
+                                                SmallChange="1" LargeChange="10" TickFrequency="1" IsSnapToTickEnabled="True"
+                                                Value="{Binding Volume}" AutomationProperties.Name="{Binding VolumeAutomationName}"
+                                                ToolTip="This device's Windows volume (affects everything playing on it)" />
+                                    </DockPanel>
+                                </StackPanel>
+                                <DockPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Center" MinWidth="50" FontSize="12">
+                                        <Run Text="{Binding DelayMs, Mode=OneWay}" /><Run Text=" ms" />
+                                    </TextBlock>
+                                    <Slider Minimum="0" Maximum="1000" SmallChange="10" LargeChange="50"
+                                            TickFrequency="10" IsSnapToTickEnabled="True" VerticalAlignment="Center"
+                                            Value="{Binding DelayMs}" AutomationProperties.Name="{Binding DelayAutomationName}" />
+                                </DockPanel>
+                                <DockPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Center" MinWidth="38" FontSize="12">
+                                        <Run Text="{Binding Volume, Mode=OneWay}" /><Run Text="%" />
+                                    </TextBlock>
+                                    <Slider Minimum="0" Maximum="100" SmallChange="1" LargeChange="10" VerticalAlignment="Center"
+                                            TickFrequency="1" IsSnapToTickEnabled="True"
+                                            Value="{Binding Volume}" AutomationProperties.Name="{Binding VolumeAutomationName}" />
+                                </DockPanel>
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" TextWrapping="Wrap" FontSize="12" Text="{Binding Status}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="5" Margin="0,10,0,0">
+            <TextBlock Style="{StaticResource Caption}"
+                       Text="Copies run 60–80 ms behind the original; add delay to whichever device sounds early. Devices where the source already plays are skipped so you don't hear it twice." />
+            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                       Text="Not detectable: with 'All apps' Dismusic can't tell which app plays where, and enhancers like FxSound re-play audio on another device. Don't add a device those already use." />
+        </StackPanel>
+    </Grid>
+</Page>

@@ -51,6 +51,10 @@ public sealed class AppRowViewModel(string exeKey, Action<AppRowViewModel> devic
     }
 
     public string OutputAutomationName => $"Output device for {DisplayName}";
+
+    /// <summary>Context-menu action: clear the fixed output so the app uses the Windows default.</summary>
+    public RelayCommand UseDefaultCommand => _useDefault ??= new RelayCommand(() => SelectedDeviceId = null);
+    private RelayCommand? _useDefault;
     public string FollowAutomationName => $"{DisplayName} follows the screen its window is on";
 
     /// <summary>Updates from a refresh without triggering the change callbacks.</summary>

@@ -32,13 +32,19 @@ dotnet publish src/Dismusic.App -c Release -r win-x64 --self-contained -p:Publis
 
 ## Using it
 
+The window is a Windows 11 style app: a Mica backdrop, an integrated title bar, and a collapsible navigation rail on the left (Apps, Multi-output, Enhance, Screens, and Settings at the bottom). Only the lists inside a page scroll. Messages appear as InfoBars under the title bar. It follows the Windows light/dark setting.
+
+Keyboard: **Ctrl+1 … Ctrl+5** switch pages, **F5** refreshes devices and apps, **Ctrl+W** closes to the notification area, and **Esc** closes the tray quick controls. Right-click an app row on Apps for "Use Windows default output" and "Follow screen".
+
 | Tab | What it does |
 |---|---|
 | Apps | Lists apps that have an audio session. Pick an output, or tick **Follow screen**. "Playing on now" shows the current routing and why. |
 | Multi-output | Pick a source and the devices that should get a copy, then **Start**. Delay (0–1000 ms) and copy volume can be changed while it runs. Under each device name are that device's own Windows volume and mute, the same as Windows' slider for it. |
-| Enhance | Tick an app to process it. Choose a preset (Flat, Bass boost, Music, Movie, Voice / podcast, Gaming, Treble boost, Loud, Max boost, Quiet) or set volume (0–400%) and the 10 EQ bands (±12 dB). Save the current settings as your own preset; editing any value switches the preset to "Custom". |
+| Enhance | Turn an app on to process it. The last enhancement you chose (preset, volume, EQ) is remembered and is the starting point for the next app you enhance; the last app you edited is reselected. Choose a preset (Flat, Bass boost, Music, Movie, Voice / podcast, Gaming, Treble boost, Loud, Max boost, Quiet) or set volume (0–400%) and the 10 EQ bands (±12 dB). Save the current settings as your own preset; editing any value switches the preset to "Custom". |
 | Screens | Map each monitor to an audio device. **Auto-detect** matches HDMI/DP audio by monitor name. |
-| Settings | Start with Windows (HKCU `Run` key, starts with `--tray`), start minimized, reset all app outputs, open the log folder. |
+| Settings | Start with Windows (HKCU `Run` key, starts with `--tray`), always start minimized, reset all app outputs, open the log folder, keyboard shortcuts. |
+
+**Start with Windows** is turned on automatically the first time Dismusic runs, because routing and enhancements only apply while it is running. If you turn it off it stays off. It starts minimized to the notification area, and apps you enhanced are enhanced again, with your last settings, as soon as they play.
 
 Closing the window keeps the app in the notification area (it may sit under "Show hidden icons").
 - **Left-click** the icon for quick controls: the default output's volume and mute, and the list of outputs (choosing one makes it the Windows default; apps that follow the default move to it). Esc or clicking elsewhere closes it.
@@ -65,7 +71,7 @@ src/Dismusic.Core
   Mirror/MirrorChannel.cs          per-output ring buffer + drift-correcting linear resampler
   Mirror/MirrorEngine.cs           one capture → N WASAPI shared-mode outputs
   Settings/                        JSON settings with atomic writes and corrupt-file recovery
-src/Dismusic.App                   WPF UI (Fluent theme), tray icon, single instance
+src/Dismusic.App                   WPF UI (WPF-UI Fluent controls), pages in Views/, tray icon + flyout, single instance
 src/Dismusic.Diag                  console diagnostics
 tests/Dismusic.Tests               xUnit tests
 ```
@@ -118,6 +124,13 @@ tests/Dismusic.Tests               xUnit tests
   - "All apps except Dismusic" multi-output copies won't contain enhanced apps; use "Everything on \<device\>" instead.
 - Switching the default output uses `IPolicyConfig`, which Windows doesn't document but its own Sound settings use. `Diag defaulttest` checks it.
 - Rendering is forced to software mode, because WPF's GPU path produced a blank window on the development laptop. The UI is static, so the cost is negligible.
+
+## Third-party components
+
+| Package | Use | License |
+|---|---|---|
+| [NAudio.Wasapi](https://github.com/naudio/NAudio) 2.2.1 | WASAPI devices, sessions, render streams | MIT |
+| [WPF-UI](https://github.com/lepoco/wpfui) 4.3.0 | Fluent 2 controls (NavigationView, TitleBar, InfoBar, ToggleSwitch), Mica | MIT |
 
 ## Files
 

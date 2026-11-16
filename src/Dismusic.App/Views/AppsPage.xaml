@@ -1,0 +1,95 @@
+<Page x:Class="Dismusic.App.Views.AppsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:vm="clr-namespace:Dismusic.App.ViewModels"
+      mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+      Title="Apps" ScrollViewer.CanContentScroll="False"
+      Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontFamily="{StaticResource AppFont}">
+    <Grid Margin="24,12,24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Apps" Style="{StaticResource PageTitle}" />
+        <TextBlock Grid.Row="1" Style="{StaticResource Hint}" Margin="0,2,0,12"
+                   Text="Pick an output for each app, or let it follow the screen its window is on. Right-click a row for quick actions." />
+
+        <Grid Grid.Row="2" Margin="15,0,15,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="160" />
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="220" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="App" Style="{StaticResource ColumnHeader}" />
+            <TextBlock Grid.Column="1" Text="Output" Style="{StaticResource ColumnHeader}" />
+            <TextBlock Grid.Column="2" Text="Follow screen" Style="{StaticResource ColumnHeader}" Margin="12,0,0,0" />
+            <TextBlock Grid.Column="3" Text="Playing on now" Style="{StaticResource ColumnHeader}" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <StackPanel>
+                <Border Style="{StaticResource Row}" Visibility="{Binding HasApps, Converter={StaticResource BoolToCollapsed}}">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <ui:SymbolIcon Symbol="Info24" Margin="0,0,10,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Style="{StaticResource Hint}" VerticalAlignment="Center"
+                                   Text="No apps are playing audio right now. Start playback in any app and it appears here within a couple of seconds." />
+                    </StackPanel>
+                </Border>
+                <ItemsControl ItemsSource="{Binding Apps}" IsTabStop="False">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:AppRowViewModel}">
+                            <Border Style="{StaticResource Row}">
+                                <Border.ContextMenu>
+                                    <ContextMenu>
+                                        <MenuItem Header="Use Windows default output" Command="{Binding UseDefaultCommand}" />
+                                        <MenuItem Header="Follow screen" IsCheckable="True" IsChecked="{Binding Follow}" />
+                                    </ContextMenu>
+                                </Border.ContextMenu>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" MinWidth="160" />
+                                        <ColumnDefinition Width="260" />
+                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="220" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <TextBlock Text="{Binding DisplayName}" Style="{StaticResource RowTitle}" />
+                                        <TextBlock Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap">
+                                            <Run Text="{Binding ExeKey, Mode=OneWay}" /><Run Text=" · " /><Run Text="{Binding StatusText, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <ComboBox Grid.Column="1" VerticalAlignment="Center"
+                                              ItemsSource="{Binding DataContext.DeviceOptions, RelativeSource={RelativeSource AncestorType=Page}}"
+                                              SelectedValuePath="Key" DisplayMemberPath="Name"
+                                              SelectedValue="{Binding SelectedDeviceId}"
+                                              IsEnabled="{Binding DataContext.CanRoute, RelativeSource={RelativeSource AncestorType=Page}}"
+                                              AutomationProperties.Name="{Binding OutputAutomationName}" />
+                                    <ui:ToggleSwitch Grid.Column="2" Margin="12,0,0,0" VerticalAlignment="Center"
+                                                     IsChecked="{Binding Follow}"
+                                                     IsEnabled="{Binding DataContext.CanRoute, RelativeSource={RelativeSource AncestorType=Page}}"
+                                                     AutomationProperties.Name="{Binding FollowAutomationName}" />
+                                    <StackPanel Grid.Column="3" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding NowOnText}" TextWrapping="Wrap" FontSize="13" />
+                                        <TextBlock Text="{Binding ErrorText}" Style="{StaticResource ErrorText}"
+                                                   Visibility="{Binding ErrorText, Converter={StaticResource NullToCollapsed}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </ScrollViewer>
+
+        <TextBlock Grid.Row="4" Style="{StaticResource Caption}" Margin="0,10,0,0"
+                   Text="Most apps switch instantly. A few (some games, apps that choose their own device) switch after playback or the app restarts." />
+    </Grid>
+</Page>

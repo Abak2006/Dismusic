@@ -99,7 +99,17 @@ public sealed class EnhanceViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string? StatusText { get => _statusText; private set => Set(ref _statusText, value); }
+    public string? StatusText
+    {
+        get => _statusText;
+        private set { if (Set(ref _statusText, value)) Raise(nameof(IsStatusOpen)); }
+    }
+
+    public bool IsStatusOpen
+    {
+        get => StatusText is not null;
+        set { if (!value) StatusText = null; }
+    }
     public string NewPresetName { get => _newPresetName; set => Set(ref _newPresetName, value); }
 
     public bool IsEnhancing(string exe) => _engine.IsRunning(exe);

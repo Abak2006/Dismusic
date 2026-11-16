@@ -103,8 +103,26 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public bool CanRoute => _routing.RoutingUnavailableReason is null;
     public bool HasApps => Apps.Count > 0;
-    public string? RoutingWarning { get => _routingWarning; private set => Set(ref _routingWarning, value); }
-    public string? StatusText { get => _statusText; private set => Set(ref _statusText, value); }
+    public string? RoutingWarning
+    {
+        get => _routingWarning;
+        private set { if (Set(ref _routingWarning, value)) Raise(nameof(HasRoutingWarning)); }
+    }
+
+    public bool HasRoutingWarning => RoutingWarning is not null;
+
+    public string? StatusText
+    {
+        get => _statusText;
+        private set { if (Set(ref _statusText, value)) Raise(nameof(IsStatusOpen)); }
+    }
+
+    /// <summary>Bound to the status InfoBar; closing it clears the message.</summary>
+    public bool IsStatusOpen
+    {
+        get => StatusText is not null;
+        set { if (!value) StatusText = null; }
+    }
 
     public bool ScreenFollowEnabled
     {

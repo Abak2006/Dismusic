@@ -1,0 +1,68 @@
+<Page x:Class="Dismusic.App.Views.ScreensPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+      xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+      xmlns:vm="clr-namespace:Dismusic.App.ViewModels"
+      mc:Ignorable="d" d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
+      Title="Screens" ScrollViewer.CanContentScroll="False"
+      Foreground="{DynamicResource TextFillColorPrimaryBrush}" FontFamily="{StaticResource AppFont}">
+    <Grid Margin="24,12,24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Screens" Style="{StaticResource PageTitle}" />
+        <TextBlock Grid.Row="1" Style="{StaticResource Hint}" Margin="0,2,0,12"
+                   Text="Tell Dismusic which speakers belong to each screen. Apps with Follow screen on switch output when you move their window." />
+
+        <Border Grid.Row="2" Style="{StaticResource Row}" Margin="0,0,0,12">
+            <DockPanel>
+                <ui:Button DockPanel.Dock="Right" Content="Auto-detect" Icon="{ui:SymbolIcon ScreenSearch24}"
+                           Command="{Binding AutoDetectMonitorsCommand}" VerticalAlignment="Center"
+                           ToolTip="Match screens to audio devices by name (only fills screens that aren't mapped)" />
+                <ui:ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ScreenFollowEnabled}" Margin="0,0,16,0" VerticalAlignment="Center"
+                                 AutomationProperties.Name="Screen follow" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Screen follow" Style="{StaticResource RowTitle}" />
+                    <TextBlock Text="Turn off to keep every app on its fixed output." Style="{StaticResource Caption}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Focusable="False">
+            <ItemsControl ItemsSource="{Binding Monitors}" IsTabStop="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="{x:Type vm:MonitorRowViewModel}">
+                        <Border Style="{StaticResource Row}">
+                            <DockPanel>
+                                <ComboBox DockPanel.Dock="Right" Width="320" VerticalAlignment="Center"
+                                          ItemsSource="{Binding DataContext.MonitorDeviceOptions, RelativeSource={RelativeSource AncestorType=Page}}"
+                                          SelectedValuePath="Key" DisplayMemberPath="Name"
+                                          SelectedValue="{Binding SelectedDeviceId}"
+                                          AutomationProperties.Name="{Binding AutomationName}" />
+                                <ui:SymbolIcon DockPanel.Dock="Left" Symbol="Desktop24" FontSize="20" Margin="0,0,12,0" VerticalAlignment="Center" />
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <TextBlock Text="{Binding Name}" Style="{StaticResource RowTitle}" />
+                                    <TextBlock Text="{Binding Details}" Style="{StaticResource Caption}" />
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="4" Margin="0,10,0,0">
+            <TextBlock Style="{StaticResource Caption}"
+                       Text="Windows routes audio per app, not per window: if one app has windows on two screens, the window on top decides." />
+            <TextBlock Style="{StaticResource Caption}" Margin="0,2,0,0"
+                       Text="On an unmapped screen, a following app uses its fixed output from Apps, or the Windows default." />
+        </StackPanel>
+    </Grid>
+</Page>
