@@ -7,3 +7,4 @@ obj/
 .idea/
 TestResults/
 *.log
+.claude/launch.json
