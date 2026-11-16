@@ -125,6 +125,14 @@ tests/Dismusic.Tests               xUnit tests
 - Switching the default output uses `IPolicyConfig`, which Windows doesn't document but its own Sound settings use. `Diag defaulttest` checks it.
 - Rendering is forced to software mode, because WPF's GPU path produced a blank window on the development laptop. The UI is static, so the cost is negligible.
 
+## Website
+
+The download site lives in `site/` (static HTML/CSS/JS, self-hosted fonts) and is hosted on Cloudflare Pages at https://dismusic.pages.dev. The app file itself is served from GitHub Releases on `Abak2006/dismusic-download`, because Cloudflare Pages caps files at 25 MB. To publish site changes (needs `wrangler login` once):
+
+```bash
+npx wrangler@4.20.0 pages deploy site --project-name dismusic --branch main
+```
+
 ## Third-party components
 
 | Package | Use | License |
